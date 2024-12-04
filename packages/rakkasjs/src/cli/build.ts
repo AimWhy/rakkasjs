@@ -1,10 +1,10 @@
-import { BuildOptions, ResolvedConfig } from "vite";
-import multibuild from "@vavite/multibuild";
+import type { BuildOptions, ResolvedConfig } from "vite";
+import { multibuild } from "@vavite/multibuild";
 import { version } from "../../package.json";
 import pico from "picocolors";
 import { doPrerender } from "./prerender";
-import { cleanOptions, GlobalCLIOptions } from ".";
-import { RakkasAdapter } from "../vite-plugin/adapters";
+import { cleanOptions, type GlobalCLIOptions } from ".";
+import type { RakkasAdapter } from "../vite-plugin/adapters";
 
 export async function build(
 	root: string,
@@ -29,6 +29,8 @@ export async function build(
 				")",
 		);
 	}
+
+	process.env.NODE_ENV = options.mode || "production";
 
 	await multibuild(
 		{
@@ -75,7 +77,7 @@ export async function build(
 	}
 
 	if (adapter!.bundle) {
-		logStep(step++, `Bundling for ${adapter!.name}`);
+		logStep(step++, `Adapting for ${adapter!.name}`);
 		await adapter!.bundle(config!.root);
 	}
 }

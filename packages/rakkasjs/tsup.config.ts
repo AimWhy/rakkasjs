@@ -1,5 +1,5 @@
+import fs from "node:fs";
 import { defineConfig } from "tsup";
-import fs from "fs";
 
 function namedExports() {
 	return {
@@ -49,20 +49,17 @@ export default defineConfig([
 		dts: true,
 	},
 	{
-		entry: ["./src/lib/client.ts"],
-		target: "node14",
+		entry: {
+			"index.client": "./src/lib/index.client.ts",
+			client: "./src/runtime/client-entry.tsx",
+			"server-stub": "./src/runtime/server-stub.ts",
+		},
+		target: "node18",
 		format: ["esm"],
 		platform: "node",
 		shims: false,
 		external: [
-			"virtual:rakkasjs:hattip-entry",
-			"virtual:rakkasjs:common-hooks",
-			"virtual:rakkasjs:api-routes",
-			"virtual:rakkasjs:server-page-routes",
-			"virtual:rakkasjs:client-page-routes",
-			"virtual:rakkasjs:client-manifest",
-			"virtual:rakkasjs:run-server-side:manifest",
-			"virtual:rakkasjs:error-page",
+			/^rakkasjs:/,
 			"react",
 			"react/jsx-runtime",
 			"react/jsx-dev-runtime",
@@ -72,31 +69,32 @@ export default defineConfig([
 			"@vavite/expose-vite-dev-server/vite-dev-server",
 		],
 		noExternal: [
-			"react-helmet-async",
 			"react-error-boundary",
 			"@brillout/json-serializer/parse",
 			"@brillout/json-serializer/stringify",
+			"@microsoft/fetch-event-source",
 		],
 		dts: {
-			entry: "./src/lib/index.ts",
-			resolve: ["react-error-boundary"],
+			entry: {
+				index: "./src/lib/index.client.ts",
+				client: "./src/runtime/client-entry.tsx",
+				server: "./src/runtime/hattip-handler.ts",
+			},
 		},
 		plugins: [namedExports()],
 	},
 	{
-		entry: ["./src/lib/server.ts"],
+		entry: {
+			"index.server": "./src/lib/index.server.ts",
+			server: "./src/runtime/hattip-handler.ts",
+			"client-stub": "./src/runtime/client-stub.ts",
+		},
 		format: ["esm"],
 		platform: "node",
 		shims: false,
 		external: [
-			"virtual:rakkasjs:hattip-entry",
-			"virtual:rakkasjs:common-hooks",
-			"virtual:rakkasjs:api-routes",
-			"virtual:rakkasjs:server-page-routes",
-			"virtual:rakkasjs:client-page-routes",
-			"virtual:rakkasjs:client-manifest",
-			"virtual:rakkasjs:run-server-side:manifest",
-			"virtual:rakkasjs:error-page",
+			/^rakkasjs:/,
+			"node:async_hooks",
 			"react",
 			"react/jsx-runtime",
 			"react/jsx-dev-runtime",
@@ -108,6 +106,7 @@ export default defineConfig([
 		noExternal: [
 			"@brillout/json-serializer/parse",
 			"@brillout/json-serializer/stringify",
+			"@microsoft/fetch-event-source",
 		],
 		plugins: [namedExports()],
 	},

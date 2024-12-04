@@ -1,10 +1,10 @@
-import { PluginOption } from "vite";
-import path from "path";
-import fs from "fs";
+import path from "node:path";
+import fs from "node:fs";
+import { Plugin } from "vite";
 // @ts-expect-error: No typings
 import { highlight } from "reprism";
 
-export default function sampleLoader(): PluginOption {
+export default function sampleLoader(): Plugin {
 	return {
 		name: "rakkas:website:sample-loader",
 

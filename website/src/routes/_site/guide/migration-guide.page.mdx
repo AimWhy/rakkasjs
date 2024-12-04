@@ -2,6 +2,13 @@
 title: Migration guide
 ---
 
+## 0.6 to 0.7
+
+- `react-helmet-async` is gone:
+  - `Head` can now only be used for `<title>` and `<meta>` tags with a Remix-like API.
+  - `head` property of `preload`'s return value should now be an object, not `ReactNode`.
+  - You can still use `emitToDocumentHead` to inject arbitrary HTML into the document head.
+
 ## 0.5 to 0.6
 
 > This is the largest update so far with a lot of breaking changes. The whole data fetching system has been redesigned to use React Suspense and streaming SSR. We apologize for the inconvenience but we feel the changes are justified because they take the developer experience to a whole new level.
@@ -30,7 +37,7 @@ title: Migration guide
 
 - Remove the `@rakkasjs/runner-node` package.
 - Upgrade to `rakkasjs@0.5.0` and `@rakkasjs/cli@0.5.0`.
-- Update your `start` script to `node dist/server` instead of `@rakkasjs/runner-node`.
+- Update your `start` script to `node dist/server/index.js` instead of `@rakkasjs/runner-node`.
 - If you were using `rakkas export` to generate a static site:
   - Change your build command to `rakkas build -d static`.
   - Serve your static site from `dist` instead of `dist/static`.

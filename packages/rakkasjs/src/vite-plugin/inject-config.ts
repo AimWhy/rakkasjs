@@ -1,6 +1,7 @@
-import { spawn } from "child_process";
-import { Plugin } from "vite";
-import { RakkasAdapter } from "./adapters";
+import { spawn } from "node:child_process";
+import type { Plugin } from "vite";
+import type { RakkasAdapter } from "./adapters";
+import type { BuildStep } from "@vavite/multibuild";
 
 export interface InjectConfigOptions {
 	prerender: string[];
@@ -26,50 +27,58 @@ export function injectConfig(options: InjectConfigOptions): Plugin {
 				process.env.RAKKAS_DISABLE_STREAMING = "false";
 			}
 
-			return {
-				buildSteps: [
-					{
-						name: "client",
-						config: {
-							build: {
-								outDir: "dist/client",
-								rollupOptions: {
-									input: {
-										index: "/virtual:rakkasjs:client-entry",
-									},
-								},
-							},
-						},
-					},
-					{
-						name: "server",
-						config: {
-							build: {
-								outDir: "dist/server",
-								ssr: true,
-							},
+			const buildSteps: BuildStep[] = [
+				{
+					name: "client",
+					config: {
+						build: {
+							outDir: "dist/client",
 							rollupOptions: {
 								input: {
-									"hattip-entry": "virtual:rakkasjs:hattip-entry",
+									index: "/rakkasjs:client-entry",
 								},
 							},
 						},
 					},
-				],
+				},
+				{
+					name: "server",
+					config: {
+						build: {
+							outDir: "dist/server",
+							ssr: true,
+							rollupOptions: {
+								input: {
+									index: "/virtual:vavite-connect-server",
+									hattip: "rakkasjs:hattip-entry",
+								},
+							},
+							target: "node18",
+						},
+					},
+				},
+			];
+
+			return {
+				buildSteps,
+
+				build: {
+					assetsDir: "_app/assets",
+				},
 
 				ssr: {
 					external: ["react-dom/server.browser"],
-					noExternal: ["rakkasjs"],
+					noExternal: ["rakkasjs", "@vavite/expose-vite-dev-server"],
 					optimizeDeps: {
 						exclude: [
 							"rakkasjs",
-							"virtual:rakkasjs:client-manifest",
-							"virtual:rakkasjs:client-page-routes",
-							"virtual:rakkasjs:api-routes",
-							"virtual:rakkasjs:run-server-side:manifest",
-							"virtual:rakkasjs:server-page-routes",
-							"virtual:rakkasjs:error-page",
 							"@vavite/expose-vite-dev-server",
+							"rakkasjs:client-manifest",
+							"rakkasjs:client-page-routes",
+							"rakkasjs:api-routes",
+							"rakkasjs:run-server-side:manifest",
+							"rakkasjs:server-page-routes",
+							"rakkasjs:error-page",
 						],
 					},
 				},
@@ -81,17 +90,17 @@ export function injectConfig(options: InjectConfigOptions): Plugin {
 					// TODO: Remove this when https://github.com/vitejs/vite/pull/8917 is merged
 					exclude: [
 						"rakkasjs",
-						"virtual:rakkasjs:client-manifest",
-						"virtual:rakkasjs:client-page-routes",
-						"virtual:rakkasjs:api-routes",
-						"virtual:rakkasjs:run-server-side:manifest",
-						"virtual:rakkasjs:server-page-routes",
-						"virtual:rakkasjs:error-page",
+						"rakkasjs:client-manifest",
+						"rakkasjs:client-page-routes",
+						"rakkasjs:api-routes",
+						"rakkasjs:run-server-side:manifest",
+						"rakkasjs:server-page-routes",
+						"rakkasjs:error-page",
 						"@vavite/expose-vite-dev-server",
 					],
 				},
 
-				envPrefix: "RAKKAS_",
+				envPrefix: ["VITE_", "RAKKAS_"],
 
 				api: {
 					rakkas: {
@@ -106,15 +115,6 @@ export function injectConfig(options: InjectConfigOptions): Plugin {
 					),
 				},
 			};
-		},
-
-		configResolved(config) {
-			if (config.command === "build" && config.build.ssr) {
-				config.build.rollupOptions.input = {
-					index: "/virtual:vavite-connect-server",
-					hattip: "virtual:rakkasjs:hattip-entry",
-				};
-			}
 		},
 	};
 }

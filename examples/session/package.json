@@ -1,27 +1,28 @@
 {
-	"name": "@rakkasjs/example-session",
-	"description": "Rakkas session example",
-	"type": "module",
-	"private": true,
-	"scripts": {
-		"dev": "dotenv rakkas",
-		"build": "rakkas build",
-		"start": "dotenv node dist/server"
-	},
-	"devDependencies": {
-		"@hattip/polyfills": "^0.0.20",
-		"@types/react": "^18.0.24",
-		"@types/react-dom": "^18.0.8",
-		"rakkasjs": "0.6.2-next.10",
-		"typescript": "^4.8.4",
-		"vite": "^3.2.1",
-		"vite-tsconfig-paths": "^3.5.2"
-	},
-	"dependencies": {
-		"@hattip/cookie": "^0.0.20",
-		"@hattip/session": "^0.0.20",
-		"dotenv-cli": "^6.0.0",
-		"react": "^18.2.0",
-		"react-dom": "^18.2.0"
-	}
+  "name": "@rakkasjs/example-session",
+  "description": "Rakkas session example",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "dotenv rakkas",
+    "build": "rakkas build",
+    "start": "dotenv node dist/server/index.js"
+  },
+  "devDependencies": {
+    "@hattip/polyfills": "0.0.48",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "rakkasjs": "0.7.0-next.49",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.3",
+    "vite-tsconfig-paths": "^5.0.1"
+  },
+  "dependencies": {
+    "@hattip/cookie": "0.0.48",
+    "@hattip/session": "0.0.48",
+    "dotenv-cli": "^7.4.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
 }

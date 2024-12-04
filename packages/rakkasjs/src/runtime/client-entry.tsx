@@ -1,18 +1,23 @@
-import React, { StrictMode, Suspense } from "react";
-import { hydrateRoot } from "react-dom/client";
+import React, { startTransition, StrictMode } from "react";
+import { hydrateRoot, createRoot } from "react-dom/client";
 import { DEFAULT_QUERY_OPTIONS } from "../features/use-query/implementation";
 import {
-	UseQueryOptions,
-	PageContext,
+	type UseQueryOptions,
 	ErrorBoundary,
-	LookupHookResult,
+	type CommonPluginOptions,
 } from "../lib";
 import { App, loadRoute, RouteContext } from "./App";
-import { ClientHooks } from "./client-hooks";
-import featureHooks from "./feature-client-hooks";
+import type { ClientHooks } from "./client-hooks";
+import { featureClientHooks } from "./feature-client-hooks";
 import { IsomorphicContext } from "./isomorphic-context";
-import ErrorComponent from "virtual:rakkasjs:error-page";
-import commonHooks from "virtual:rakkasjs:common-hooks";
+import ErrorComponent from "rakkasjs:error-page";
+import type { PageContext } from "./page-types";
+import { sortHooks } from "./utils";
+import { commonHooks } from "./feature-common-hooks";
+import factories, {
+	options as configOptions,
+} from "rakkasjs:plugin-client-hooks";
+import * as commonHooksModule from "rakkasjs:common-hooks";
 
 export type { ClientHooks };
 
@@ -24,73 +29,93 @@ export interface StartClientOptions {
 	hooks?: ClientHooks;
 }
 
+export interface ClientPluginOptions {}
+
+export type ClientPluginFactory = (
+	options: ClientPluginOptions,
+	commonOptions: CommonPluginOptions,
+	configOptions: any,
+) => ClientHooks;
+
 /** Starts the client. */
-export async function startClient(options: StartClientOptions = {}) {
+export async function startClient(
+	options: StartClientOptions = {},
+	pluginOptions: ClientPluginOptions = {},
+) {
 	Object.assign(DEFAULT_QUERY_OPTIONS, options.defaultQueryOptions);
 
-	const clientHooks = options.hooks
-		? [...featureHooks, options.hooks]
-		: featureHooks;
+	const { commonPluginOptions = {} } = commonHooksModule;
 
-	for (const hooks of clientHooks) {
-		if (hooks.beforeStart) {
-			await hooks.beforeStart();
-		}
+	const hooks = [
+		...factories.map((factory, i) =>
+			factory(pluginOptions, commonPluginOptions, configOptions[i]),
+		),
+		...featureClientHooks,
+	];
+
+	const beforeStartHandlers = sortHooks([
+		...hooks.map((hook) => hook.beforeStart),
+		options.hooks?.beforeStart,
+	]);
+
+	for (const handler of beforeStartHandlers) {
+		await handler();
 	}
 
 	const pageContext: PageContext = {
 		url: new URL(window.location.href),
 		locals: {},
 	} as any;
-	for (const hooks of clientHooks) {
-		await hooks.extendPageContext?.(pageContext);
+
+	const extendPageContextHandlers = sortHooks([
+		...hooks.map((hook) => hook.extendPageContext),
+		options.hooks?.extendPageContext,
+		...commonHooks.map((hook) => hook.extendPageContext),
+	]);
+
+	for (const handler of extendPageContextHandlers) {
+		await handler(pageContext);
 	}
-	await commonHooks.extendPageContext?.(pageContext);
 
-	const beforePageLookupHandlers: Array<
-		(ctx: PageContext, url: URL) => LookupHookResult
-	> = [commonHooks.beforePageLookup].filter(Boolean) as any;
+	const wrapAppHandlers = sortHooks([
+		...hooks.map((hook) => hook.wrapApp),
+		options.hooks?.wrapApp,
+		...commonHooks.map((hook) => hook.wrapApp),
+	]).reverse();
 
-	let app = (
+	let app = <App />;
+
+	for (const handler of wrapAppHandlers) {
+		app = handler(app);
+	}
+
+	app = (
 		<IsomorphicContext.Provider value={pageContext}>
-			<App beforePageLookupHandlers={beforePageLookupHandlers} />
+			{app}
 		</IsomorphicContext.Provider>
 	);
-
-	const reverseHooks = [...clientHooks].reverse();
-	for (const hooks of reverseHooks) {
-		if (hooks.wrapApp) {
-			app = hooks.wrapApp(app);
-		}
-	}
-
-	if (commonHooks.wrapApp) {
-		app = commonHooks.wrapApp(app);
-	}
 
 	history.replaceState(
 		{
 			...history.state,
-			actionData: (window as any).$RAKKAS_ACTION_DATA,
+			actionData: rakkas.actionData,
 		},
 		"",
 	);
 
 	const route = await loadRoute(
 		pageContext,
+		new URL(window.location.href),
 		undefined,
 		true,
-		beforePageLookupHandlers,
-		(window as any).$RAKKAS_ACTION_DATA,
+		rakkas.actionData,
 	).catch((error) => {
 		return { error };
 	});
 
 	app = (
-		<RouteContext.Provider value={"error" in route ? route : { last: route }}>
-			<Suspense>
-				<ErrorBoundary FallbackComponent={ErrorComponent}>{app}</ErrorBoundary>
-			</Suspense>
+		<RouteContext.Provider value={"error" in route! ? route : { last: route }}>
+			<ErrorBoundary FallbackComponent={ErrorComponent}>{app}</ErrorBoundary>
 		</RouteContext.Provider>
 	);
 
@@ -98,5 +123,24 @@ export async function startClient(options: StartClientOptions = {}) {
 		app = <StrictMode>{app}</StrictMode>;
 	}
 
-	hydrateRoot(document.getElementById("root")!, app);
+	const container = document.getElementById("root")!;
+
+	const onNavigateHooks = sortHooks([
+		...hooks.map((hook) => hook.onNavigation),
+		options.hooks?.onNavigation,
+	]);
+
+	rakkas.emitNavigationEvent = (url: URL) => {
+		for (const hook of onNavigateHooks) {
+			hook(url);
+		}
+	};
+
+	if (rakkas.clientRender) {
+		createRoot(container).render(app);
+	} else {
+		startTransition(() => {
+			hydrateRoot(container, app);
+		});
+	}
 }

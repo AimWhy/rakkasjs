@@ -1,6 +1,6 @@
-import { Plugin, ResolvedConfig } from "vite";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
+import type { Plugin, ResolvedConfig } from "vite";
 
 export function resolveClientManifest(): Plugin {
 	let resolvedConfig: ResolvedConfig;
@@ -12,9 +12,9 @@ export function resolveClientManifest(): Plugin {
 		enforce: "pre",
 
 		resolveId(id, _, options) {
-			if (id === "virtual:rakkasjs:client-manifest") {
+			if (id === "rakkasjs:client-manifest") {
 				if (dev || !options.ssr) {
-					return id;
+					return "\0virtual:" + id;
 				} else {
 					return this.resolve(
 						path.resolve(resolvedConfig.root, "dist/manifest.json"),
@@ -24,7 +24,7 @@ export function resolveClientManifest(): Plugin {
 		},
 
 		load(id) {
-			if (id === "virtual:rakkasjs:client-manifest") {
+			if (id === "\0virtual:rakkasjs:client-manifest") {
 				return "export default undefined";
 			}
 		},
@@ -35,7 +35,7 @@ export function resolveClientManifest(): Plugin {
 			if (!config.build?.ssr) {
 				return {
 					build: {
-						manifest: true,
+						manifest: "vite.manifest.json",
 					},
 				};
 			}
@@ -53,13 +53,13 @@ export function resolveClientManifest(): Plugin {
 			const from = path.resolve(
 				resolvedConfig.root,
 				resolvedConfig.build.outDir,
-				"manifest.json",
+				"vite.manifest.json",
 			);
 
 			await fs.promises
 				.rename(from, resolvedConfig.root + "/dist/manifest.json")
 				.catch(() => {
-					// Just ignore
+					// Ignore if the file doesn't exist
 				});
 		},
 	};

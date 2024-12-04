@@ -1,11 +1,4 @@
-import React, {
-	createContext,
-	ReactElement,
-	ReactNode,
-	Suspense,
-	useContext,
-	useEffect,
-} from "react";
+import React, { type ReactNode, Suspense, useSyncExternalStore } from "react";
 
 /** {@link ClientOnly} props */
 export interface ClientOnlyProps {
@@ -18,28 +11,21 @@ export interface ClientOnlyProps {
 // TODO: Strip ClientOnly component's children out of the SSR bundle
 
 /** Opt out of server-side rendering */
-export function ClientOnly(props: ClientOnlyProps): ReactElement {
-	const context = useContext(ClientOnlyContext);
+export function ClientOnly(props: ClientOnlyProps): ReactNode {
+	const isHydrated = useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false,
+	);
 
-	useEffect(() => {
-		if (!context.hydrated) {
-			context.setHydrated();
-		}
-	}, [context]);
-
-	return <>{context && context.hydrated ? props.children : props.fallback}</>;
-}
-
-/** Suspense boundary that only runs on the client */
-export function ClientSuspense(props: ClientOnlyProps): ReactElement {
 	return (
-		<ClientOnly fallback={props.fallback}>
-			<Suspense fallback={props.fallback}>{props.children}</Suspense>
-		</ClientOnly>
+		<Suspense fallback={props.fallback}>
+			{isHydrated ? props.children : props.fallback}
+		</Suspense>
 	);
 }
 
-export const ClientOnlyContext = createContext<{
-	hydrated: boolean;
-	setHydrated: () => void;
-}>(undefined as any);
+/**
+ * @deprecated {@link ClientOnly} now has the exact same functionality.
+ */
+export const ClientSuspense = ClientOnly;

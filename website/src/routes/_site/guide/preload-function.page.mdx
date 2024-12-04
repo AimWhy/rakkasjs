@@ -5,9 +5,9 @@ title: preload function
 Page and layout components can have a `preload` property that is a function that will be called before the page is rendered:
 
 <CodeViewer
-	name="guide-samples"
-	openFiles={["src/routes/preload/index.page.tsx"]}
-	url="/preload"
+  name="guide-samples"
+  openFiles={["src/routes/preload/index.page.tsx"]}
+  url="/preload"
 />
 
 ## Avoiding waterfalls
@@ -16,11 +16,13 @@ You may think that the `preload` function is similar to `getServerSideProps` or 
 
 Consider a scenario where both a page and its parent layout need to fetch some data. Since the page is a child of the layout, its data fetching hook will not be rendered until the parent layout is rendered. If the data fetched by the page is not dependent on the data fetched by the layout, there is no reason to wait until the parent finishes. In this case, you can use the page's `preload` function like in the above example to start fetching immediately. This works because `preload` functions of the page and all its parent layouts are called in parallel.
 
+For this purpose, you can use the `ctx.queryClient.prefetchQuery` function in your `preload` function. To avoid repeating the same code in multiple places, you can use the `queryOptions` API to define a function that can build query options suitable to be passed to `prefetchQuery` and `useQuery`. There us no separate ~~`serverSideQueryOptions`~~ API, you can use `runServerSideQuery` in your query function to run code on the server.
+
 ## Head tags
 
-When using streaming SSR, `Head` components may be discovered _after_ the document head has been sent. To avoid SEO problems, Rakkas will hold the stream until the page is fully rendered when it detects that the [request is coming from a bot](dynamic-rendering). But in some cases, you may want correct status, headers, and head tags to be sent even to browsers. `preload` offers a way to do this like in the above example.
+When using streaming SSR, `Head` components may be discovered _after_ the document head has been sent. To avoid SEO problems, Rakkas will hold the stream until the page is fully rendered when it detects that the [request is coming from a bot](dynamic-rendering). But in some cases, you may want the correct status, headers, and head tags to be sent even to browsers. `preload` offers a way to do this like in the above example.
 
-Another important thing to consider is out-of-order hydration. React may hydrate your components in a different order than you expect: If it detects the user is trying to interact with a component, its hydration will be prioritized. This can cause `Head` tags to be rendered out-of-order, causing back-and-forth switching of the document title when you have more than one `Head` component in the tree. Only using `preload` for rendering `Head` tags will prevent this potential issue.
+Another important thing to consider is out-of-order hydration. React may hydrate your components in a different order than you expect: If it detects the user is trying to interact with a component, its hydration will be prioritized. This can cause `Head` tags to be rendered out-of-order, causing back-and-forth switching of the document title when you have more than one `Head` component in the tree. Only using `preload` for rendering head tags will prevent this potential issue.
 
 ## Redirection
 
@@ -28,9 +30,9 @@ Another important thing to consider is out-of-order hydration. React may hydrate
 
 ```js
 return {
-	redirect: {
-		href: "/redirect/to",
-		premanent: true,
-	},
+  redirect: {
+    href: "/redirect/to",
+    permanent: true,
+  },
 };
 ```

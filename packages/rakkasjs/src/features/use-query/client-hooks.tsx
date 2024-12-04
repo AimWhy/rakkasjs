@@ -1,25 +1,22 @@
-import React, { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { defineClientHooks } from "../../runtime/client-hooks";
 import {
-	CacheItem,
+	type CacheItem,
 	createQueryClient,
 	DEFAULT_QUERY_OPTIONS,
-	QueryCache,
+	type QueryCache,
 	QueryCacheContext,
 } from "./implementation";
 
 export default defineClientHooks({
 	extendPageContext(ctx) {
-		ctx.queryClient = createQueryClient(cache);
+		ctx.queryClient = createQueryClient(cache, ctx);
 	},
 
 	wrapApp(app) {
 		return <Wrapper>{app}</Wrapper>;
 	},
 });
-
-// Rakkas Suspense Cache
-declare const $RSC: Record<string, any>;
 
 const queryCache: Record<string, CacheItem | undefined> = Object.create(null);
 
@@ -46,21 +43,33 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 const cache: QueryCache = {
+	setTags(key, tags, hash) {
+		let item = this.get(key);
+		if (!item) {
+			this.set(key, undefined);
+			item = this.get(key)!;
+		}
+
+		if (item.tagsHash === hash) return;
+		item.tags = tags;
+		item.tagsHash = hash;
+	},
+
 	has(key: string) {
-		return key in queryCache || key in $RSC;
+		return key in queryCache || (!!rakkas.cache && key in rakkas.cache);
 	},
 
 	get(key: string) {
-		if (!queryCache[key] && key in $RSC) {
+		if (!queryCache[key] && rakkas.cache && key in rakkas.cache) {
 			queryCache[key] = {
-				value: $RSC[key],
+				value: rakkas.cache[key],
 				subscribers: new Set(),
 				date: Date.now(),
 				hydrated: true,
 				cacheTime: DEFAULT_QUERY_OPTIONS.cacheTime,
 			};
 
-			delete $RSC[key];
+			delete rakkas.cache[key];
 		}
 
 		return queryCache[key];
@@ -78,32 +87,46 @@ const cache: QueryCache = {
 				subscribers: new Set(),
 				cacheTime,
 			};
+
 			queryCache[key] = {
 				...queryCache[key]!,
 				promise: valueOrPromise,
 				cacheTime: Math.max(queryCache[key]!.cacheTime, cacheTime),
 			};
 
-			delete queryCache[key]!.invalid;
-
-			valueOrPromise.then(
-				(value) => {
+			valueOrPromise
+				.then((value) => {
+					queryCache[key] ||= {
+						date: Date.now(),
+						hydrated: false,
+						subscribers: new Set(),
+						cacheTime,
+					};
 					queryCache[key] = {
 						...queryCache[key]!,
 						value,
 						hydrated: false,
 						date: Date.now(),
 					};
-					delete queryCache[key]!.promise;
 
-					queryCache[key]!.subscribers.forEach((subscriber) => subscriber());
-				},
-				(error) => {
+					delete queryCache[key]!.invalid;
 					delete queryCache[key]!.promise;
-					queryCache[key]!.error = error;
+				})
+				.catch((error) => {
+					queryCache[key] ||= {
+						date: Date.now(),
+						hydrated: false,
+						subscribers: new Set(),
+						cacheTime,
+					};
+					queryCache[key] = { ...queryCache[key]!, error };
+
+					delete queryCache[key]!.promise;
 					throw error;
-				},
-			);
+				})
+				.finally(() => {
+					queryCache[key]!.subscribers.forEach((subscriber) => subscriber());
+				});
 		} else {
 			queryCache[key] ||= {
 				date: Date.now(),
@@ -144,7 +167,7 @@ const cache: QueryCache = {
 			if (queryCache[key]!.subscribers.size === 0) {
 				delete queryCache[key]!.error;
 
-				if (queryCache[key]!.cacheTime === 0) {
+				if (queryCache[key]!.cacheTime === 0 || queryCache[key]!.invalid) {
 					delete queryCache[key];
 				} else if (isFinite(queryCache[key]!.cacheTime)) {
 					queryCache[key]!.evictionTimeout = setTimeout(() => {

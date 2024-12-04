@@ -1,24 +1,24 @@
 {
-	"name": "@rakkasjs/example-guide-samples",
-	"description": "Rakkas guide code examples",
-	"type": "module",
-	"private": true,
-	"scripts": {
-		"dev": "rakkas",
-		"build": "rakkas build",
-		"start": "node dist/server"
-	},
-	"devDependencies": {
-		"@types/react": "^18.0.24",
-		"@types/react-dom": "^18.0.8",
-		"rakkasjs": "0.6.2-next.10",
-		"typescript": "^4.8.4",
-		"vite": "^3.2.1",
-		"vite-tsconfig-paths": "^3.5.2"
-	},
-	"dependencies": {
-		"@hattip/response": "^0.0.20",
-		"react": "^18.2.0",
-		"react-dom": "^18.2.0"
-	}
+  "name": "@rakkasjs/example-guide-samples",
+  "description": "Rakkas guide code examples",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "rakkas",
+    "build": "rakkas build",
+    "start": "node dist/server/index.js"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "rakkasjs": "0.7.0-next.49",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.3",
+    "vite-tsconfig-paths": "^5.0.1"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
 }

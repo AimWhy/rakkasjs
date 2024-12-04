@@ -1,0 +1,58 @@
+{
+  "name": "@rakkasjs/css",
+  "version": "0.7.0-next.49",
+  "type": "module",
+  "files": [
+    "dist",
+    "*.d.ts"
+  ],
+  "exports": {
+    ".": "./dist/index.js",
+    "./vite-plugin": "./dist/vite-plugin.js",
+    "./server-hooks": "./dist/server-hooks.js"
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "dist/*.d.ts"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepack": "rm -rf dist && pnpm build",
+    "test": "pnpm run /^test:/",
+    "--test:unit": "vitest run",
+    "test:typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:lint": "eslint . --max-warnings 0 --ignore-pattern dist",
+    "test:package": "publint"
+  },
+  "description": "Rakkas plugin for simple CSS in JS",
+  "license": "MIT",
+  "repository": "github:rakkasjs/rakkasjs",
+  "keywords": [
+    "react",
+    "vite",
+    "nextjs",
+    "ssr"
+  ],
+  "peerDependencies": {
+    "rakkasjs": "*",
+    "vite": "5"
+  },
+  "dependencies": {
+    "@types/react": "^18.3.5"
+  },
+  "devDependencies": {
+    "@cyco130/eslint-config": "^3.9.5",
+    "@types/node": "^22.5.4",
+    "eslint": "^8.57.0",
+    "publint": "^0.2.10",
+    "rakkasjs": "workspace:*",
+    "tsup": "^8.2.4",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.3",
+    "vitest": "^2.0.5"
+  }
+}

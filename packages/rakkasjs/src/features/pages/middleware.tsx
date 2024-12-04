@@ -1,44 +1,66 @@
 /// <reference types="vite/client" />
-
-import React, { Fragment, ReactNode, StrictMode, Suspense } from "react";
-import { renderToReadableStream } from "react-dom/server.browser";
-import clientManifest from "virtual:rakkasjs:client-manifest";
+import React, { StrictMode } from "react";
+import {
+	renderToReadableStream,
+	renderToStaticMarkup,
+} from "react-dom/server.browser";
+import clientManifest from "rakkasjs:client-manifest";
 import { App, RouteContext } from "../../runtime/App";
 import { isBot } from "../../runtime/isbot";
-import { findPage, RouteMatch } from "../../internal/find-page";
+import { findPage, type RouteMatch } from "../../internal/find-page";
 import {
-	Redirect,
 	ResponseContext,
-	ResponseContextProps,
+	type ResponseContextProps,
 } from "../response-manipulation/implementation";
-import { RequestContext } from "@hattip/compose";
+import type { RequestContext } from "@hattip/compose";
 import {
 	IsomorphicContext,
 	ServerSideContext,
 } from "../../runtime/isomorphic-context";
-import { PageContext } from "../use-query/implementation";
 import { Default404Page } from "./Default404Page";
-import commonHooks from "virtual:rakkasjs:common-hooks";
-import {
+import type {
 	ActionResult,
 	LayoutImporter,
 	PageImporter,
 	PageRouteGuard,
 	PrerenderResult,
 	ServerSidePageContext,
+	PageContext,
+	Redirection,
 } from "../../runtime/page-types";
-import { LookupHookResult } from "../../lib";
 import { uneval } from "devalue";
 import viteDevServer from "@vavite/expose-vite-dev-server/vite-dev-server";
+import type { PageRequestHooks } from "../../runtime/hattip-handler";
+import type { ModuleNode } from "vite";
+import { escapeCss, escapeHtml, sortHooks } from "../../runtime/utils";
+import { commonHooks } from "../../runtime/feature-common-hooks";
+import { renderHeadContent } from "../head/server-hooks";
+import type { HeadElement } from "../head/implementation/types";
+import { composableActionData } from "../run-server-side/lib-server";
+import ErrorComponent from "rakkasjs:error-page";
+import { acceptsDevalue } from "../../internal/accepts-devalue";
+
+const assetPrefix = import.meta.env.BASE_URL ?? "/";
 
 const pageContextMap = new WeakMap<Request, PageContext>();
 
 export default async function renderPageRoute(
 	ctx: RequestContext,
 ): Promise<Response | undefined> {
-	const pageHooks = ctx.hooks.map((hook) => hook.createPageHooks?.(ctx));
+	if (ctx.method === "POST" && ctx.url.searchParams.get("_action")) {
+		return;
+	}
 
-	const routes = (await import("virtual:rakkasjs:server-page-routes")).default;
+	const pageHooks = ctx.rakkas.hooks.map((hook) => hook.createPageHooks?.(ctx));
+
+	const extendPageContextHandlers = sortHooks([
+		...pageHooks.map((hook) => hook?.extendPageContext),
+		...commonHooks.map((hook) => hook.extendPageContext),
+	]);
+
+	const { default: routes, notFoundRoutes } = await import(
+		"rakkasjs:server-page-routes"
+	);
 
 	let {
 		url: { pathname },
@@ -49,15 +71,15 @@ export default async function renderPageRoute(
 	if (!pageContext) {
 		pageContext = { url: ctx.url, locals: {} } as any as PageContext;
 
-		for (const hook of pageHooks) {
-			await hook?.extendPageContext?.(pageContext);
+		for (const handler of extendPageContextHandlers) {
+			await handler(pageContext);
 		}
-		await commonHooks.extendPageContext?.(pageContext);
 
 		pageContextMap.set(ctx.request, pageContext);
 	}
 
 	let found:
+		| Redirection
 		| RouteMatch<
 				[
 					regexp: RegExp,
@@ -65,21 +87,26 @@ export default async function renderPageRoute(
 					guards: PageRouteGuard<Record<string, string>>[],
 					rest: string | undefined,
 					ids: string[],
+					/** undefined = hydrate, 1 = server, 2 = client */
+					mode?: 1 | 2,
 				]
 		  >
 		| undefined;
 
-	const beforePageLookupHandlers: Array<
-		(ctx: PageContext, url: URL) => LookupHookResult
-	> = [commonHooks.beforePageLookup].filter(Boolean) as any;
-
-	if (ctx.notFound) {
+	if (ctx.rakkas.notFound) {
 		do {
 			if (!pathname.endsWith("/")) {
 				pathname += "/";
 			}
 
-			found = findPage(routes, pathname + "%24404");
+			found = (await findPage(
+				notFoundRoutes,
+				ctx.url,
+				pathname + "$404",
+				pageContext,
+				true,
+			)) as any;
+
 			if (found) {
 				break;
 			}
@@ -94,6 +121,7 @@ export default async function renderPageRoute(
 						undefined,
 						[],
 					],
+					renderedUrl: ctx.url,
 				};
 			}
 
@@ -101,62 +129,87 @@ export default async function renderPageRoute(
 			pathname = pathname.split("/").slice(0, -2).join("/") || "/";
 		} while (!found);
 	} else {
-		for (const hook of beforePageLookupHandlers) {
-			const result = hook(pageContext, pageContext.url);
-
-			if (!result) return;
-
-			if (result === true) continue;
-
-			if ("redirect" in result) {
-				const location = String(result.redirect);
-				return new Response(redirectBody(location), {
-					status: result.status ?? result.permanent ? 301 : 302,
-					headers: makeHeaders(
-						{
-							location: new URL(location, ctx.url.origin).href,
-							"content-type": "text/html; charset=utf-8",
-							vary: "accept",
-						},
-						result.headers,
-					),
-				});
-			} else {
-				// Rewrite
-				pageContext.url = new URL(result.rewrite, pageContext.url);
-			}
-		}
-
-		pathname = pageContext.url.pathname;
-
-		const result = findPage(routes, pathname, pageContext);
-
-		if (result && "redirect" in result) {
-			const location = String(result.redirect);
-			return new Response(redirectBody(location), {
-				status: result.status ?? result.permanent ? 301 : 302,
-				headers: makeHeaders(
-					{
-						location: new URL(location, ctx.url.origin).href,
-						"content-type": "text/html; charset=utf-8",
-						vary: "accept",
-					},
-					result.headers,
-				),
-			});
-		}
+		pathname = ctx.url.pathname;
+		const result = await findPage(
+			routes,
+			ctx.url,
+			pathname,
+			pageContext,
+			false,
+		);
 
 		found = result;
 
 		if (!found) return;
 	}
 
-	let redirected: boolean | undefined;
-	let status: number;
+	if (found && "redirect" in found) {
+		const location = String(found.redirect);
+		return new Response(redirectBody(location), {
+			status: (found.status ?? found.permanent) ? 301 : 302,
+			headers: makeHeaders(
+				{
+					location: new URL(location, ctx.url.origin).href,
+					"content-type": "text/html; charset=utf-8",
+				},
+				found.headers,
+			),
+		});
+	}
+
+	let renderMode = (["hydrate", "server", "client"] as const)[
+		found.route[5] ?? 0
+	];
+
 	const headers = new Headers({
 		"Content-Type": "text/html; charset=utf-8",
-		vary: "accept",
 	});
+
+	let scriptId: string;
+	let scriptPath: string | undefined;
+
+	if (import.meta.env.PROD) {
+		for (const [id, entry] of Object.entries(clientManifest!)) {
+			if (entry.isEntry) {
+				scriptId = "/" + id;
+				scriptPath = entry.file;
+				break;
+			}
+		}
+
+		if (!scriptId!) throw new Error("Entry not found in client manifest");
+	} else {
+		scriptId = "rakkasjs:client-entry";
+	}
+
+	if (renderMode === "client" && ctx.method === "GET") {
+		const prefetchOutput = await createPrefetchTags(ctx, [scriptId]);
+
+		const head = renderHead(
+			ctx,
+			prefetchOutput,
+			renderMode,
+			undefined,
+			undefined,
+			pageHooks,
+		);
+
+		let html = head + `<div id="root"></div></body>`;
+
+		html += `<script type="module" src="${
+			scriptPath ? [assetPrefix + scriptPath] : ["/" + scriptId]
+		}"></script>`;
+
+		html += `</html>`;
+
+		return new Response(html, {
+			status: 200,
+			headers,
+		});
+	}
+
+	let redirected: boolean | undefined;
+	let status: number;
 
 	let hold =
 		process.env.RAKKAS_PRERENDER === "true" ||
@@ -193,7 +246,9 @@ export default async function renderPageRoute(
 
 		if (props.redirect) {
 			redirected = redirected ?? props.redirect;
-			reactStream.cancel();
+			reactStream.cancel().catch(() => {
+				// Ignore
+			});
 		}
 	}
 
@@ -205,63 +260,66 @@ export default async function renderPageRoute(
 
 	const modules = await Promise.all(importers.map((importer) => importer()));
 
-	let actionResult: ActionResult | undefined;
+	let actionResult: ActionResult<any> | undefined;
 	let actionErrorIndex = -1;
 	let actionError: any;
 
 	if (ctx.method !== "GET") {
-		for (const [i, module] of modules.entries()) {
-			if (module.action) {
-				try {
-					actionResult = await module.action(preloadContext);
-				} catch (error) {
-					actionError = error;
-					actionErrorIndex = i;
+		const composable = composableActionData.get(ctx);
+
+		if (composable) {
+			actionResult = composable[1];
+		} else {
+			for (const [i, module] of modules.entries()) {
+				if (module.action) {
+					try {
+						actionResult = await module.action(preloadContext);
+					} catch (error) {
+						actionError = error;
+						actionErrorIndex = i;
+					}
+					break;
 				}
-				break;
 			}
 		}
 	}
 
-	if (ctx.request.headers.get("accept") === "application/javascript") {
+	if (acceptsDevalue(ctx)) {
 		if (actionResult && "redirect" in actionResult) {
 			actionResult.redirect = String(actionResult.redirect);
 		}
 
 		return new Response(uneval(actionResult), {
-			status: actionErrorIndex >= 0 ? 500 : actionResult?.status ?? 200,
+			status: actionErrorIndex >= 0 ? 500 : (actionResult?.status ?? 200),
 			headers: makeHeaders(
-				{
-					"content-type": "application/javascript",
-					vary: "accept",
-				},
+				{ "content-type": "text/javascript; devalue" },
 				actionResult?.headers,
 			),
 		});
 	}
 
-	if (actionResult && "redirect" in actionResult) {
-		const location = String(actionResult.redirect);
+	if (actionResult && actionResult.redirect) {
+		const location = new URL(actionResult.redirect, ctx.url.origin).href;
 		return new Response(redirectBody(location), {
-			status: actionResult.status ?? actionResult.permanent ? 301 : 302,
+			status: actionResult.status ?? 302,
 			headers: makeHeaders(
 				{
-					location: new URL(location, ctx.url.origin).href,
+					location,
 					"content-type": "text/html; charset=utf-8",
-					vary: "accept",
 				},
 				actionResult.headers,
 			),
 		});
 	}
 
-	status = actionResult?.status ?? (ctx.notFound ? 404 : 200);
+	status = actionResult?.status ?? (ctx.rakkas.notFound ? 404 : 200);
 
 	pageContext.actionData = actionResult?.data;
 	preloadContext.actionData = actionResult?.data;
+	const reverseModules = modules.reverse();
 
 	const preloaded = await Promise.all(
-		modules.reverse().map(async (m, i) => {
+		reverseModules.map(async (m, i) => {
 			try {
 				if (i === modules.length - 1 - actionErrorIndex) {
 					throw new Error(actionError);
@@ -282,24 +340,12 @@ export default async function renderPageRoute(
 	);
 
 	const meta: any = {};
-	preloaded.forEach((p) => Object.assign(meta, p?.meta));
-
-	const preloadNode: ReactNode[] = preloaded
-		.map((result, i) => {
-			return (
-				(result?.head || result?.redirect) && (
-					<Fragment key={i}>
-						{result?.head}
-						{result?.redirect && <Redirect {...result?.redirect} />}
-					</Fragment>
-				)
-			);
-		})
-		.filter(Boolean);
+	preloaded.forEach((p) =>
+		typeof p?.meta === "function" ? p.meta(meta) : Object.assign(meta, p?.meta),
+	);
 
 	let app = (
 		<App
-			beforePageLookupHandlers={beforePageLookupHandlers}
 			ssrActionData={actionResult?.data}
 			ssrMeta={meta}
 			ssrPreloaded={preloaded}
@@ -307,13 +353,13 @@ export default async function renderPageRoute(
 		/>
 	);
 
-	if (preloadNode.length) {
-		app = (
-			<>
-				{preloadNode}
-				{app}
-			</>
-		);
+	const wrapAppHandlers = sortHooks([
+		...pageHooks.map((hook) => hook?.wrapApp),
+		...commonHooks.map((hook) => hook.wrapApp),
+	]).reverse();
+
+	for (const handler of wrapAppHandlers) {
+		app = handler(app);
 	}
 
 	app = (
@@ -323,25 +369,6 @@ export default async function renderPageRoute(
 			</IsomorphicContext.Provider>
 		</ServerSideContext.Provider>
 	);
-
-	const reversePageHooks = [...pageHooks].reverse();
-	for (const hooks of reversePageHooks) {
-		if (hooks?.wrapApp) {
-			app = hooks.wrapApp(app);
-		}
-	}
-
-	if (commonHooks.wrapApp) {
-		app = commonHooks.wrapApp(app);
-	}
-
-	let resolveRenderPromise: () => void;
-	let rejectRenderPromise: (err: unknown) => void;
-
-	const renderPromise = new Promise<void>((resolve, reject) => {
-		resolveRenderPromise = resolve;
-		rejectRenderPromise = reject;
-	});
 
 	for (const m of modules) {
 		const headers = await m.headers?.(preloadContext, meta);
@@ -371,135 +398,82 @@ export default async function renderPageRoute(
 			<ResponseContext.Provider value={updateHeaders}>
 				<RouteContext.Provider
 					value={{
-						onRendered() {
-							resolveRenderPromise();
-						},
 						found,
 					}}
 				>
-					<Suspense>{app}</Suspense>
+					{app}
 				</RouteContext.Provider>
 			</ResponseContext.Provider>
 		</div>
 	);
 
-	let scriptPath: string;
-	if (import.meta.env.PROD) {
-		for (const entry of Object.values(clientManifest!)) {
-			if (entry.isEntry) {
-				scriptPath = entry.file;
-				break;
-			}
-		}
-
-		if (!scriptPath!) throw new Error("Entry not found in client manifest");
-	} else {
-		scriptPath = "virtual:rakkasjs:client-entry";
-	}
-
-	const moduleIds = [scriptPath, ...found.route[4]];
-
-	let prefetchOutput = "";
-
-	if (import.meta.env.PROD) {
-		const moduleSet = new Set(moduleIds);
-		const cssSet = new Set<string>();
-		// const assetSet = new Set<string>();
-
-		for (const moduleId of moduleSet) {
-			const manifestEntry = clientManifest?.[moduleId];
-			if (!manifestEntry) continue;
-
-			// TODO: Prefetch modules and other assets
-			manifestEntry.imports?.forEach((id) => moduleSet.add(id));
-			manifestEntry.css?.forEach((id) => cssSet.add(id));
-			// manifestEntry.assets?.forEach((id) => assetSet.add(id));
-
-			const script = clientManifest?.[moduleId].file;
-			if (script) {
-				prefetchOutput += `<link rel="modulepreload" crossorigin href="${escapeHtml(
-					"/" + script,
-				)}">`;
-			}
-		}
-
-		for (const cssFile of cssSet) {
-			prefetchOutput += `<link rel="stylesheet" href="${escapeHtml(
-				"/" + cssFile,
-			)}">`;
-		}
-
-		// TODO: Prefetch/preload assets
-		// for (const assetFile of assetSet) {
-		// 	prefetchOutput += `<link rel="prefetch" href="${escapeHtml(
-		// 		"/" + assetFile,
-		// 	)}">`;
-		// }
-	} else {
-		const moduleSet = new Set(moduleIds);
-		const cssSet = new Set<string>();
-		const root = viteDevServer!.config.root.replace(/\\/g, "/");
-
-		for (const moduleId of moduleSet) {
-			const module =
-				viteDevServer!.moduleGraph.getModuleById(moduleId) ??
-				viteDevServer!.moduleGraph.getModuleById(root + "/" + moduleId);
-
-			if (!module) continue;
-
-			for (const imported of module.importedModules) {
-				const url = new URL(imported.url, ctx.url);
-				url.searchParams.delete("v");
-				url.searchParams.delete("t");
-				if (url.href.match(/\.(css|scss|sass|less|styl|stylus)$/)) {
-					cssSet.add(imported.id!);
-				} else if (url.href.match(/\.(js|jsx|ts|tsx)$/)) {
-					moduleSet.add(imported.id!);
-				}
-			}
-		}
-
-		for (const cssFile of cssSet) {
-			prefetchOutput += `<link rel="stylesheet" href="${escapeHtml(cssFile)}">`;
-		}
-	}
-
 	if (import.meta.env.DEV && process.env.RAKKAS_STRICT_MODE === "true") {
 		app = <StrictMode>{app}</StrictMode>;
 	}
 
+	const bootstrapModules =
+		renderMode === "server"
+			? []
+			: scriptPath
+				? [assetPrefix + scriptPath]
+				: ["/" + scriptId];
+	let onErrorCalled = false;
 	const reactStream = await renderToReadableStream(app, {
 		// TODO: AbortController
-		bootstrapModules: ["/" + scriptPath!],
+		bootstrapModules,
 		onError(error: any) {
+			onErrorCalled = true;
 			if (!redirected) {
 				status = 500;
 				if (error && typeof error.toResponse === "function") {
-					Promise.resolve(error.toResponse()).then((response: Response) => {
-						status = response.status;
-					});
+					void Promise.resolve(error.toResponse()).then(
+						(response: Response) => {
+							status = response.status;
+						},
+					);
 				} else if (process.env.RAKKAS_PRERENDER) {
 					(ctx.platform as any).reportError(error);
 				} else {
 					console.error(error);
 				}
 			}
-			rejectRenderPromise(error);
 		},
+	}).catch(async (error) => {
+		if (!onErrorCalled && !redirected) {
+			status = 500;
+			if (error && typeof error.toResponse === "function") {
+				const response = await error.toResponse();
+				status = response.status;
+			} else if (process.env.RAKKAS_PRERENDER) {
+				(ctx.platform as any).reportError(error);
+			} else {
+				console.error(error);
+			}
+		}
+
+		// Well render an Internal Error page and let the client take over
+		renderMode = "client";
+		return renderToReadableStream(
+			<ServerSideContext.Provider value={ctx}>
+				<IsomorphicContext.Provider value={pageContext}>
+					<div id="root">
+						<ErrorComponent
+							error={new Error("Internal Error")}
+							resetErrorBoundary={() => {}}
+						/>
+					</div>
+				</IsomorphicContext.Provider>
+			</ServerSideContext.Provider>,
+			{
+				bootstrapModules,
+			},
+		);
 	});
 
 	try {
-		await renderPromise;
-		await new Promise<void>((resolve) => {
-			setTimeout(resolve, 0);
-		});
-
 		const userAgent = ctx.request.headers.get("user-agent");
 		if (hold === true || (userAgent && isBot(userAgent))) {
 			await reactStream.allReady;
-			await new Promise<void>((resolve) => {
-				setTimeout(resolve, 0);
-			});
 		} else if (hold > 0) {
 			await Promise.race([
 				reactStream.allReady,
@@ -529,40 +503,27 @@ export default async function renderPageRoute(
 		});
 	}
 
-	// TODO: Customize HTML document
-	let head =
-		`<!DOCTYPE html><html><head>` +
-		prefetchOutput +
-		`<meta charset="UTF-8" />` +
-		`<meta name="viewport" content="width=device-width, initial-scale=1.0" />` +
-		// TODO: Refactor this. Probably belongs to client-side-navigation
-		(actionResult?.data === undefined
-			? ""
-			: `<script>$RAKKAS_ACTION_DATA=${uneval(actionResult?.data)}</script>`);
+	const prefetchOutput = await createPrefetchTags(ctx, [
+		scriptId,
+		...found.route[4],
+	]);
 
-	if (actionErrorIndex >= 0) {
-		head += `<script>$RAKKAS_ACTION_ERROR_INDEX=${actionErrorIndex}</script>`;
-	}
+	const head = renderHead(
+		ctx,
+		prefetchOutput,
+		renderMode,
+		actionResult?.data,
+		actionErrorIndex,
+		pageHooks,
+	);
 
-	for (const hooks of pageHooks) {
-		if (hooks?.emitToDocumentHead) {
-			head += hooks.emitToDocumentHead();
-		}
-	}
-
-	if (import.meta.env.DEV) {
-		head +=
-			`<script type="module" src="/@vite/client"></script>` +
-			`<script type="module" async>${REACT_FAST_REFRESH_PREAMBLE}</script>`;
-	}
-
-	head += `</head><body>`;
+	const wrapSsrStreamHandlers = sortHooks(
+		pageHooks.map((hook) => hook?.wrapSsrStream),
+	);
 
 	let wrapperStream: ReadableStream = reactStream;
-	for (const hooks of pageHooks) {
-		if (hooks?.wrapSsrStream) {
-			wrapperStream = hooks.wrapSsrStream(wrapperStream);
-		}
+	for (const handler of wrapSsrStreamHandlers) {
+		wrapperStream = handler(wrapperStream);
 	}
 
 	const textEncoder = new TextEncoder();
@@ -582,30 +543,34 @@ export default async function renderPageRoute(
 					close() {
 						// Ignore
 					},
-			  }
+				}
 			: writable.getWriter();
 
+	const emitBeforeSsrChunkHandlers = sortHooks(
+		pageHooks.map((hook) => hook?.emitBeforeSsrChunk),
+	);
+
 	async function pipe() {
-		writer.write(textEncoder.encode(head));
+		await writer.write(textEncoder.encode(head));
 		for await (const chunk of wrapperStream as any) {
-			for (const hooks of pageHooks) {
-				if (hooks?.emitBeforeSsrChunk) {
-					const text = hooks.emitBeforeSsrChunk();
-					if (text) {
-						writer.write(textEncoder.encode(text));
-					}
+			for (const handler of emitBeforeSsrChunkHandlers) {
+				const text = handler();
+				if (text) {
+					await writer.write(textEncoder.encode(text));
 				}
 			}
 
-			writer.write(chunk);
+			await writer.write(chunk);
 		}
 
-		writer.write(textEncoder.encode("</body></html>"));
+		await writer.write(textEncoder.encode("</body></html>"));
 
-		writer.close();
+		await writer.close();
 	}
 
-	const pipePromise = pipe();
+	const pipePromise = pipe().catch(() => {
+		// Ignore
+	});
 
 	if (hold === true) {
 		await pipePromise;
@@ -624,15 +589,6 @@ export default async function renderPageRoute(
 
 	ctx.waitUntil(pipePromise);
 	return new Response(readable, { status, headers });
-}
-
-function escapeHtml(text: string): string {
-	return text
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#x27;");
 }
 
 const REACT_FAST_REFRESH_PREAMBLE = `import RefreshRuntime from '/@react-refresh'
@@ -667,6 +623,227 @@ function makeHeaders(
 				result.set(header, value);
 			}
 		}
+	}
+
+	return result;
+}
+
+async function createPrefetchTags(ctx: RequestContext, moduleIds: string[]) {
+	const pageUrl = ctx.url;
+	let result = "";
+
+	if (!viteDevServer) {
+		moduleIds = moduleIds.map((id) => id.slice(1));
+		// Add this manually because it's a dynamic import
+		moduleIds.push("virtual:rakkasjs:client-page-routes");
+		const moduleSet = new Set(moduleIds);
+		const cssSet = new Set<string>();
+		// const assetSet = new Set<string>();
+
+		const elements: HeadElement[] = [];
+		for (const moduleId of moduleSet) {
+			const manifestEntry = clientManifest?.[moduleId];
+			if (!manifestEntry) continue;
+
+			manifestEntry.imports?.forEach((id) => moduleSet.add(id));
+			manifestEntry.css?.forEach((id) => cssSet.add(id));
+			// manifestEntry.assets?.forEach((id) => assetSet.add(id));
+
+			const script = clientManifest?.[moduleId].file;
+			if (script) {
+				elements.push({
+					tagName: "link",
+					rel: "modulepreload",
+					href: assetPrefix + script,
+					crossorigin: "" as any,
+					"data-sr": true,
+				});
+			}
+		}
+
+		for (const cssFile of cssSet) {
+			elements.push({
+				tagName: "link",
+				rel: "stylesheet",
+				href: assetPrefix + cssFile,
+				"data-sr": true,
+			});
+		}
+
+		ctx.rakkas.head.push({ elements });
+
+		// TODO: Prefetch/preload assets
+		// for (const assetFile of assetSet) {
+		// 	prefetchOutput += `<link rel="prefetch" href="${escapeHtml(
+		// 		"/" + assetFile,
+		// 	)}">`;
+		// }
+	} else {
+		// Force loading the client entry module so that we can get the list of
+		// modules imported by it.
+		await viteDevServer
+			.transformRequest("rakkasjs:client-entry")
+			.catch(() => null);
+
+		const moduleSet = new Set(moduleIds);
+		const cssSet = new Map<string, string>();
+
+		for (const moduleUrl of moduleSet) {
+			const module:
+				| (ModuleNode & { ssrImportedModules?: Set<ModuleNode> })
+				| undefined = await viteDevServer.moduleGraph.getModuleByUrl(moduleUrl);
+
+			if (!module) continue;
+
+			const importedModules = [
+				...(module.ssrImportedModules ?? []),
+				...(module.clientImportedModules ?? []),
+			].map((m) => ({ id: m.id, url: m.url }));
+
+			for (const imported of importedModules) {
+				const url = new URL(imported.url, pageUrl);
+				url.searchParams.delete("v");
+				url.searchParams.delete("t");
+				if (url.href.match(/\.(css|scss|sass|less|styl|stylus)$/)) {
+					if (imported.id) cssSet.set(imported.id, imported.url);
+				} else if (url.href.match(/\.(js|jsx|ts|tsx)$/)) {
+					moduleSet.add(imported.url);
+				}
+			}
+		}
+
+		for (const [id, url] of cssSet) {
+			const directUrl = url + (url.includes("?") ? "&" : "?") + "direct";
+			const transformed = await viteDevServer.transformRequest(directUrl);
+			if (!transformed) continue;
+			result += `<style type="text/css" data-vite-dev-id=${JSON.stringify(
+				id,
+			)}>${escapeCss(transformed.code)}</style>`;
+		}
+	}
+
+	return result;
+}
+
+function renderHead(
+	ctx: RequestContext,
+	prefetchOutput: string,
+	renderMode: "server" | "hydrate" | "client",
+	actionData: unknown = undefined,
+	actionErrorIndex = -1,
+	pageHooks: Array<PageRequestHooks | undefined> = [],
+) {
+	// TODO: Customize HTML document
+
+	const browserGlobal: typeof rakkas = { headTagStack: [], headOrder: 0 };
+	if (actionErrorIndex >= 0 && renderMode !== "server") {
+		browserGlobal.actionErrorIndex = actionErrorIndex;
+	}
+
+	if (actionData !== undefined && renderMode !== "server") {
+		// TODO: Refactor this. Probably belongs to client-side-navigation
+		browserGlobal.actionData = actionData;
+	}
+
+	if (renderMode === "client") {
+		browserGlobal.clientRender = true;
+	}
+
+	const script: HeadElement = {
+		tagName: "script",
+		"data-sr": true,
+		textContent: `rakkas=${uneval(browserGlobal)};`,
+	};
+
+	const emitToSyncHeadScriptHandlers = sortHooks(
+		pageHooks.map((hook) => hook?.emitToSyncHeadScript),
+	);
+
+	for (const handler of emitToSyncHeadScriptHandlers) {
+		const body = handler();
+		if (!body) continue;
+
+		script.textContent += body;
+	}
+
+	ctx.rakkas.head.push({ elements: [script] });
+
+	const emitServerOnlyHeadElementsHandlers = sortHooks(
+		pageHooks.map((hook) => hook?.emitServerOnlyHeadElements),
+	);
+
+	for (const handler of emitServerOnlyHeadElementsHandlers) {
+		const head = handler();
+		if (!head) continue;
+
+		ctx.rakkas.head.push({
+			elements: head.map((e) => ({ ...e, "data-sr": true })),
+		});
+	}
+
+	const { specialAttributes, content: managedHead } = renderHeadContent(
+		ctx.url.pathname + ctx.url.search,
+		ctx.rakkas.head,
+	);
+
+	let result = managedHead;
+
+	const emitToDocumentHeadHandlers = sortHooks(
+		// eslint-disable-next-line deprecation/deprecation
+		pageHooks.map((hook) => hook?.emitToDocumentHead),
+	);
+
+	for (const handler of emitToDocumentHeadHandlers) {
+		const head = handler();
+		if (!head) continue;
+
+		const headStr =
+			typeof head === "string" ? head : renderToStaticMarkup(head);
+
+		result += headStr;
+	}
+
+	result =
+		`<!DOCTYPE html><html${stringifyAttributes(
+			specialAttributes.htmlAttributes,
+		)}><head${stringifyAttributes(specialAttributes.headAttributes)}>` + result;
+
+	result += prefetchOutput;
+
+	if (import.meta.env.DEV) {
+		result +=
+			`<script type="module" src="/@vite/client"></script>` +
+			`<script type="module" async>${REACT_FAST_REFRESH_PREAMBLE}</script>`;
+	}
+
+	result += `</head><body${stringifyAttributes(
+		specialAttributes.bodyAttributes,
+	)}>`;
+
+	return result;
+}
+
+function stringifyAttributes(
+	attributes: Record<string, string | number | boolean | undefined>,
+) {
+	let result = "";
+	for (const [key, value] of Object.entries(attributes)) {
+		if (
+			["key", "textContent", "innerHTML", "children", "tagName"].includes(
+				key,
+			) ||
+			value === false ||
+			value === undefined
+		) {
+			continue;
+		}
+
+		if (value === true) {
+			result += ` ${escapeHtml(key)}`;
+			continue;
+		}
+
+		result += ` ${escapeHtml(key)}="${escapeHtml(String(value))}"`;
 	}
 
 	return result;

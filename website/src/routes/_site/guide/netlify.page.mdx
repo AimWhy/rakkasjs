@@ -17,11 +17,11 @@ import { defineConfig } from "vite";
 import rakkas from "rakkasjs/vite-plugin";
 
 export default defineConfig({
-	plugins: [
-		rakkas({
-			adapter: "netlify", // or "netlify-edge"
-		}),
-	],
+  plugins: [
+    rakkas({
+      adapter: "netlify", // or "netlify-edge"
+    }),
+  ],
 });
 ```
 
@@ -30,6 +30,9 @@ Then create a `netlify.toml` file like this:
 ```toml
 [build]
 publish = "netlify/static"
+
+[dev]
+framework = "#static"
 
 # Uncomment for Netlify Edge
 # [[edge_functions]]

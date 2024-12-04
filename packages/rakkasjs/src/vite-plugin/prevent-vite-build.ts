@@ -1,6 +1,4 @@
-/// <reference types="@vavite/multibuild/vite-config" />
-
-import { Plugin } from "vite";
+import type { Plugin } from "vite";
 
 export function preventViteBuild(): Plugin {
 	let buildStepStartCalled = false;

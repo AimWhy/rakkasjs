@@ -1,61 +1,61 @@
 {
-	"private": true,
-	"type": "module",
-	"name": "@rakkasjs/website",
-	"scripts": {
-		"start": "sirv --port 3000 dist/client",
-		"build": "rakkas build",
-		"dev": "vite",
-		"--prepack": "pnpm build"
-	},
-	"author": "Fatih Aygün <cyco130@gmail.com>",
-	"license": "MIT",
-	"repository": "https://github.com/rakkasjs/rakkasjs",
-	"homepage": "https://rakkasjs.org",
-	"files": [
-		"dist/**/*"
-	],
-	"keywords": [
-		"react",
-		"vite",
-		"ssr"
-	],
-	"dependencies": {
-		"@mdx-js/react": "^2.1.5",
-		"@stackblitz/sdk": "^1.8.0",
-		"cookie": "^0.5.0",
-		"hamburger-react": "^2.5.0",
-		"prism": "^4.1.2",
-		"prism-themes": "^1.9.0",
-		"react": "^18.2.0",
-		"react-dom": "^18.2.0",
-		"sanitize.css": "^13.0.0"
-	},
-	"devDependencies": {
-		"@cyco130/eslint-config": "^2.1.2",
-		"@cyco130/vite-plugin-mdx": "^0.0.2",
-		"@docsearch/css": "^3.3.0",
-		"@docsearch/react": "^3.3.0",
-		"@mapbox/rehype-prism": "^0.8.0",
-		"@rollup/pluginutils": "^5.0.2",
-		"@types/cookie": "^0.5.1",
-		"@types/react": "^18.0.24",
-		"@types/react-dom": "^18.0.8",
-		"eslint": "^8.26.0",
-		"gray-matter": "^4.0.3",
-		"install": "^0.13.0",
-		"node-dev": "^7.4.3",
-		"prettier": "^2.7.1",
-		"rakkasjs": "workspace:*",
-		"remark-frontmatter": "^4.0.1",
-		"remark-gfm": "^3.0.1",
-		"reprism": "^0.0.11",
-		"sirv": "^2.0.2",
-		"sirv-cli": "^2.0.2",
-		"source-map": "^0.7.4",
-		"typescript": "^4.8.4",
-		"vfile": "^5.3.5",
-		"vite": "^3.2.1",
-		"vite-plugin-cjs-interop": "^0.0.3"
-	}
+  "private": true,
+  "type": "module",
+  "name": "@rakkasjs/website",
+  "scripts": {
+    "dev": "rakkas",
+    "build": "rakkas build",
+    "start": "sirv --port 3000 dist/client"
+  },
+  "author": "Fatih Aygün <cyco130@gmail.com>",
+  "license": "MIT",
+  "repository": "github:rakkasjs/rakkasjs",
+  "homepage": "https://rakkasjs.org",
+  "files": [
+    "dist/**/*"
+  ],
+  "keywords": [
+    "react",
+    "vite",
+    "ssr"
+  ],
+  "dependencies": {
+    "@mdx-js/react": "^3.0.1",
+    "@stackblitz/sdk": "^1.11.0",
+    "cookie": "^0.6.0",
+    "hamburger-react": "^2.5.1",
+    "prism": "^4.1.2",
+    "prism-themes": "^1.9.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sanitize.css": "^13.0.0"
+  },
+  "devDependencies": {
+    "@cyco130/eslint-config": "^3.9.5",
+    "@cyco130/vite-plugin-mdx": "^1.0.6",
+    "@docsearch/css": "^3.6.1",
+    "@docsearch/react": "^3.6.1",
+    "@mapbox/rehype-prism": "^0.9.0",
+    "@rollup/pluginutils": "^5.1.0",
+    "@types/cookie": "^0.6.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.2.21",
+    "@vitejs/plugin-react-swc": "^3.6.0",
+    "eslint": "^8.57.0",
+    "gray-matter": "^4.0.3",
+    "install": "^0.13.0",
+    "node-dev": "^8.0.0",
+    "prettier": "^3.3.3",
+    "rakkasjs": "workspace:*",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.0",
+    "reprism": "^0.0.11",
+    "sirv": "^2.0.4",
+    "sirv-cli": "^2.0.2",
+    "source-map": "^0.7.4",
+    "typescript": "^5.5.4",
+    "vfile": "^6.0.3",
+    "vite": "^5.4.3",
+    "vite-plugin-cjs-interop": "^2.1.3"
+  }
 }

@@ -1,37 +1,49 @@
-import { PageContext } from "../lib";
-import {
-	PageRouteGuard,
-	PageRouteGuardContext,
-	Redirection,
-} from "../runtime/page-types";
+import type { PageContext } from "../lib";
+import { commonHooks } from "../runtime/feature-common-hooks";
+import type { PageRouteGuard, Redirection } from "../runtime/page-types";
+import { sortHooks } from "../runtime/utils";
 
-export function findPage<
+export const beforePageLookupHandlers = sortHooks(
+	commonHooks.map((hook) => hook.beforePageLookup),
+);
+
+export async function findPage<
 	T extends
-		| typeof import("virtual:rakkasjs:server-page-routes").default[0]
-		| typeof import("virtual:rakkasjs:client-page-routes").default[0],
+		| (typeof import("rakkasjs:server-page-routes").default)[0]
+		| (typeof import("rakkasjs:client-page-routes").default)[0],
 >(
 	routes: T[],
+	url: URL,
 	path: string,
 	pageContext: PageContext,
-): RouteMatch<T> | Redirection | undefined;
-
-export function findPage<
-	T extends
-		| typeof import("virtual:rakkasjs:server-page-routes").default[0]
-		| typeof import("virtual:rakkasjs:client-page-routes").default[0],
->(routes: T[], path: string): RouteMatch<T> | undefined;
-
-export function findPage<
-	T extends
-		| typeof import("virtual:rakkasjs:server-page-routes").default[0]
-		| typeof import("virtual:rakkasjs:client-page-routes").default[0],
->(
-	routes: T[],
-	path: string,
-	pageContext?: PageContext,
-): RouteMatch<T> | Redirection | undefined {
-	let originalHref = pageContext?.url.href;
+	notFound: boolean,
+): Promise<RouteMatch<T> | Redirection | undefined> {
 	let rewritten: boolean;
+	let renderedUrl: URL = url;
+
+	const lookupContext = { ...pageContext, url, renderedUrl };
+
+	if (!notFound) {
+		for (const handler of beforePageLookupHandlers) {
+			let result = handler(lookupContext);
+			if (result instanceof Promise) {
+				result = await result;
+			}
+
+			if (!result) return undefined;
+
+			if (result === true) continue;
+
+			if ("redirect" in result) {
+				const location = String(result.redirect);
+				return { redirect: location };
+			} else {
+				// Rewrite
+				renderedUrl = new URL(result.rewrite, renderedUrl);
+				path = renderedUrl.pathname;
+			}
+		}
+	}
 
 	do {
 		rewritten = false;
@@ -42,38 +54,40 @@ export function findPage<
 			if (!match) continue;
 
 			const params = unescapeParams(match.groups || {}, route[3]);
+			const guardContext = { ...pageContext, url, renderedUrl, params };
 
-			if (pageContext) {
-				const guards = (route[2] as Array<PageRouteGuard>) || [];
-				const guardContext: PageRouteGuardContext = {
-					...pageContext,
-					params,
-				};
+			const guards = (route[2] as Array<PageRouteGuard>) || [];
 
-				for (const guard of guards) {
-					const result = guard(guardContext);
-					if (!result) {
-						// Try next match
-						continue outer;
-					} else if (result === true) {
-						// Continue with the next guard
-						continue;
-					} else if ("rewrite" in result) {
+			for (const guard of guards) {
+				let result = guard(guardContext);
+				if (result instanceof Promise) {
+					result = await result;
+				}
+
+				if (!result) {
+					// Try next match
+					continue outer;
+				} else if (result === true) {
+					// Continue with the next guard
+					continue;
+				} else if ("rewrite" in result) {
+					renderedUrl = new URL(result.rewrite, renderedUrl);
+					path = renderedUrl.pathname;
+
+					if (url.href !== renderedUrl.href) {
 						rewritten = true;
-						pageContext.url = new URL(result.rewrite, originalHref);
-						originalHref = pageContext.url.href;
-						path = pageContext.url.pathname;
-						// Try again with the new path
-						break outer;
-					} else {
-						return result;
 					}
+					// Try again with the new path
+					break outer;
+				} else {
+					return result;
 				}
 			}
 
 			return {
 				route,
 				params,
+				renderedUrl,
 			};
 		}
 	} while (rewritten);
@@ -82,6 +96,7 @@ export function findPage<
 export interface RouteMatch<T> {
 	route: T;
 	params: Record<string, string>;
+	renderedUrl: URL;
 }
 
 export function unescapeParams(params: Record<string, string>, rest?: string) {

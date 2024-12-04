@@ -1,9 +1,12 @@
-import { ComponentType, ReactNode } from "react";
-import {
-	PageContext,
+import type { ComponentType, ReactNode } from "react";
+import type { ResolvedConfig } from "vite";
+import type {
 	RedirectProps,
 	ResponseHeadersProps,
 	RequestContext,
+	HeadProps,
+	QueryClient,
+	PageLocals,
 } from "../lib";
 
 export type PageImporter = () => Promise<PageModule>;
@@ -12,14 +15,14 @@ export type LayoutImporter = () => Promise<LayoutModule>;
 
 export interface PageModule {
 	default: Page;
-	action?: ActionHandler;
+	action?: ActionHandler<any>;
 	headers?: HeadersFunction;
 	prerender?: PrerenderFunction;
 }
 
 export interface LayoutModule {
 	default: Layout;
-	action?: ActionHandler;
+	action?: ActionHandler<any>;
 	headers?: HeadersFunction;
 	prerender?: PrerenderFunction;
 }
@@ -47,8 +50,10 @@ export interface PageProps<
 	P = Record<string, string>,
 	M = Record<string, unknown>,
 > {
-	/** Current URL */
+	/** Current URL before rewrites */
 	url: URL;
+	/** Rendered URL after rewrites */
+	renderedUrl: URL;
 	/** Route parameters */
 	params: P;
 	/** Action data */
@@ -74,12 +79,12 @@ export interface LayoutProps<
  * 			meta: {
  * 				someKey: "Some metadata to be passed to the pages and layouts",
  * 			},
- * 			head: <Head title="My Page Title" />,
+ * 			head: { title: "My Page Title", description: "My page description" },
  * 		};
  * 	};
  * ```
  * You can also handle redirections by returning a
- * {@link PreloadResult.redirect redirect} prop.
+ * {@link PreloadResult["redirect"] redirect} prop.
  */
 export type PreloadFunction<
 	P = Record<string, string>,
@@ -99,6 +104,10 @@ export interface ActionContext<P = Record<string, string>> extends PageContext {
 /** Arguments passed to the preload function */
 export interface PreloadContext<P = Record<string, string>>
 	extends PageContext {
+	/** The URL before rewrites */
+	url: URL;
+	/** The URL after rewrites */
+	renderedUrl: URL;
 	/** Route parameters */
 	params: P;
 	/** Action data */
@@ -117,27 +126,31 @@ export type ServerSidePageContext<P = Record<string, string>> =
 /** Return type of a preload function */
 export interface PreloadResult<M = Record<string, unknown>> {
 	/** Metadata passed to page and layout components. */
-	meta?: Partial<M>;
+	meta?: Partial<M> | ((prevMeta: M) => M);
 	/** Head tags rendered for the page. Use the <Head /> component. */
-	head?: ReactNode;
+	head?: HeadProps;
 	/** Redirection */
 	redirect?: RedirectProps;
 }
 
 export interface PageRouteGuardContext<P = Record<string, string>>
 	extends PageContext {
+	/** The URL before rewrites */
+	url: URL;
+	/** The URL after rewrites */
+	renderedUrl: URL;
 	/** Dynamic path parameters */
 	params: P;
 }
 
-/** Type for the default export of page guards */
+/** Page guard */
 export type PageRouteGuard<P = Record<string, string>> = (
 	ctx: PageRouteGuardContext<P>,
-) => LookupHookResult;
+) => LookupHookResult | Promise<LookupHookResult>;
 
-export type ActionHandler = (
+export type ActionHandler<T> = (
 	pageContext: ActionContext,
-) => ActionResult | Promise<ActionResult>;
+) => ActionResult<T> | Promise<ActionResult<T>>;
 
 /** Function to set response headers */
 export type HeadersFunction<M = Record<string, unknown>> = (
@@ -159,6 +172,13 @@ export interface PrerenderResult {
 	shouldCrawl?: boolean;
 	/** More links to prerender */
 	links?: (URL | string)[];
+}
+
+export interface LookupHookContext extends PageContext {
+	/** The URL before rewrites */
+	url: URL;
+	/** The URL after rewrites */
+	renderedUrl: URL;
 }
 
 /**
@@ -189,14 +209,40 @@ export interface Redirection {
 	headers?: Record<string, string | string[]> | ((headers: Headers) => void);
 }
 
-export type ActionResult =
-	| Redirection
-	| {
-			data: any;
-			/** The status code */
-			status?: number;
-			/** Response headers */
-			headers?:
-				| Record<string, string | string[]>
-				| ((headers: Headers) => void);
-	  };
+export type ActionResult<T> = {
+	/** The data */
+	data: T;
+	/** Redirect to another URL */
+	redirect?: string | URL;
+	/** The status code */
+	status?: number;
+	/** Response headers */
+	headers?: Record<string, string | string[]> | ((headers: Headers) => void);
+};
+
+export type RouteConfigExport =
+	| RouteConfig
+	| ((config: ResolvedConfig) => RouteConfig | Promise<RouteConfig>);
+
+export interface RouteConfig extends BaseRouteConfig {
+	defaults?: BaseRouteConfig;
+}
+
+export interface BaseRouteConfig {
+	disabled?: boolean;
+	renderingMode?: "hydrate" | "server" | "client";
+}
+
+/** Context within which the page is being rendered */
+export interface PageContext {
+	/** Isomorphic fetch function */
+	fetch: typeof fetch;
+	/** Query client used by useQuery */
+	queryClient: QueryClient;
+	/** Request context, only defined on the server */
+	requestContext?: RequestContext;
+	/** Application-specific stuff */
+	locals: PageLocals;
+	/** Page action data */
+	actionData?: any;
+}

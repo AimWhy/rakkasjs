@@ -1,9 +1,9 @@
-import { PluginOption } from "vite";
+import fs from "node:fs";
+import path from "node:path";
+import { Plugin } from "vite";
 import grayMatter from "gray-matter";
-import fs from "fs";
-import path from "path";
 
-export default function frontmatterLoader(): PluginOption {
+export default function frontmatterLoader(): Plugin {
 	let root: string;
 
 	return {

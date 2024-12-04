@@ -1,0 +1,20 @@
+{
+  "name": "@rakkasjs/testbed-examples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ci-examples": "vitest run --reporter=verbose",
+    "test": "pnpm run /^test:/",
+    "test:typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:lint": "eslint . --max-warnings 0 --ignore-pattern dist"
+  },
+  "devDependencies": {
+    "@cyco130/eslint-config": "^3.9.5",
+    "@types/ps-tree": "^1.1.6",
+    "eslint": "^8.57.0",
+    "ps-tree": "^1.2.0",
+    "puppeteer": "^23.3.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.3"
+  }
+}

@@ -127,6 +127,9 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+# Deno
+deno.lock
+
 # Local files
 *.local.*
 
@@ -134,5 +137,6 @@ dist
 # Local folders
 .netlify
 .vercel
+.wrangler
 testbed/kitchen-sink/netlify
 packages/create-rakkas-app/templates

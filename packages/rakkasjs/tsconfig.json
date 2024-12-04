@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"target": "es2020",
+		"target": "es2021",
 		"module": "ESNext",
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
@@ -8,7 +8,9 @@
 		"skipLibCheck": true,
 		"moduleResolution": "Node",
 		"resolveJsonModule": true,
-		"jsx": "react"
+		"jsx": "react",
+		"verbatimModuleSyntax": true,
+		"outDir": "dist"
 	},
 	"exclude": ["dist", "*.d.ts"]
 }

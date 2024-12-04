@@ -1,14 +1,17 @@
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { HattipHandler } from "@hattip/core";
-import installNodeFetch from "@hattip/polyfills/node-fetch";
-import { ResolvedConfig, resolveConfig } from "vite";
+import { type ResolvedConfig, resolveConfig } from "vite";
 import pico from "picocolors";
-import fs from "fs";
-import path from "path";
-import { GlobalCLIOptions } from ".";
+import type { GlobalCLIOptions } from ".";
 import { version } from "../../package.json";
 import { load } from "cheerio";
-import { pathToFileURL } from "url";
-import { PrerenderResult } from "../runtime/page-types";
+import type { PrerenderResult } from "../runtime/page-types";
+import { escapeHtml } from "../runtime/utils";
+import installFetch from "@hattip/polyfills/node-fetch";
+
+installFetch();
 
 export interface RenderOptions {
 	root?: string;
@@ -64,8 +67,6 @@ export async function doPrerender(
 	if (pathNames.length === 0) {
 		pathNames = ["/"];
 	}
-
-	installNodeFetch();
 
 	process.env.RAKKAS_PRERENDER = "true";
 	const fileUrl = pathToFileURL(outDir + "/server/hattip.js").href;
@@ -176,7 +177,7 @@ export async function doPrerender(
 								body = isRedirect
 									? `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${escapeHtml(
 											response.headers.get("location")!,
-									  )}"></head></html>`
+										)}"></head></html>`
 									: "";
 							}
 
@@ -187,6 +188,9 @@ export async function doPrerender(
 						}
 					}
 				},
+			},
+			env(variable: string) {
+				return process.env[variable];
 			},
 		});
 	}
@@ -240,8 +244,8 @@ export async function doPrerender(
 				(status < 300
 					? status
 					: status < 400
-					? pico.yellow(status)
-					: pico.red(status)) +
+						? pico.yellow(status)
+						: pico.red(status)) +
 					" " +
 					pico.gray(config.build.outDir + "/client/") +
 					pico.cyan(fileName.slice(1)),
@@ -256,13 +260,4 @@ export async function doPrerender(
 
 function plural(n: number, s: string) {
 	return n + " " + (n === 1 ? s : s + "s");
-}
-
-function escapeHtml(text: string): string {
-	return text
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#x27;");
 }

@@ -1,5 +1,6 @@
 import {
 	ActionContext,
+	ActionHandler,
 	ActionResult,
 	Head,
 	PageProps,
@@ -11,7 +12,7 @@ import { getUserName, setUserName } from "./db";
 
 export default function FormsPage({ actionData }: PageProps) {
 	const { data: userName } = useServerSideQuery(() => getUserName(), {
-		key: "userName",
+		queryKey: "userName",
 	});
 
 	const queryClient = useQueryClient();
@@ -48,7 +49,7 @@ export default function FormsPage({ actionData }: PageProps) {
 	);
 }
 
-export async function action(ctx: ActionContext): Promise<ActionResult> {
+export const action: ActionHandler = async (ctx) => {
 	const formData = await ctx.requestContext.request.formData();
 
 	const userName = formData.get("userName");
@@ -66,4 +67,4 @@ export async function action(ctx: ActionContext): Promise<ActionResult> {
 	return {
 		data: { success: true },
 	};
-}
+};

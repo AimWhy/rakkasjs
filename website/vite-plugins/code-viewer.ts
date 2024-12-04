@@ -1,9 +1,9 @@
-import { PluginOption } from "vite";
-import path from "path";
+import path from "node:path";
+import { Plugin } from "vite";
 
 const FROM_REPO = true;
 
-export default function frontmatterLoader(): PluginOption {
+export default function frontmatterLoader(): Plugin {
 	let root: string;
 
 	return {
@@ -38,7 +38,7 @@ export default function frontmatterLoader(): PluginOption {
 							name,
 						)} files={import.meta.glob(${JSON.stringify(
 							pattern,
-						)}, { as: "raw", eager: true })}`;
+						)}, { query: "?raw", eager: true })}`;
 					}
 
 					if (!importInjected) {

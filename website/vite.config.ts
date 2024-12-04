@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react-swc";
 import rakkas from "rakkasjs/vite-plugin";
 import codeViewer from "./vite-plugins/code-viewer";
 import sampleLoader from "./vite-plugins/sample-loader";
 import frontmatterLoader from "./vite-plugins/frontmatter-loader";
-import mdx from "@cyco130/vite-plugin-mdx";
+import { mdx } from "@cyco130/vite-plugin-mdx";
 
 // @ts-expect-error: No typings
 import { loadLanguages } from "reprism";
@@ -32,6 +33,10 @@ export default defineConfig({
 		noExternal: ["sanitize.css", "@docsearch/css"],
 	},
 
+	optimizeDeps: {
+		include: ["@mdx-js/react", "hamburger-react", "@docsearch/react"],
+	},
+
 	plugins: [
 		codeViewer(),
 		sampleLoader(),
@@ -44,10 +49,9 @@ export default defineConfig({
 			providerImportSource: "@mdx-js/react",
 		}),
 
-		rakkas({
-			pageExtensions: ["jsx", "tsx", "mdx"],
-			prerender: true,
-		}),
+		react(),
+
+		rakkas({ prerender: true }),
 
 		cjsInterop({
 			dependencies: ["@docsearch/react"],

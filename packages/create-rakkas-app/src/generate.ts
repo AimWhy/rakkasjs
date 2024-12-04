@@ -1,12 +1,11 @@
 /* eslint-disable no-console */
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import os from "node:os";
 import { Options } from ".";
-import mkdirp from "mkdirp";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import path from "path";
 import cpr from "cpr";
 import pico from "picocolors";
-import os from "os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +60,7 @@ export async function generate(dir: string, options: Options) {
 }
 
 async function copyFiles(dir: string, options: Options, command: string) {
-	await mkdirp(dir);
+	await fs.promises.mkdir(dir, { recursive: true });
 
 	const src = path.resolve(
 		__dirname,
@@ -104,6 +103,12 @@ async function copyFiles(dir: string, options: Options, command: string) {
 		fs.readFileSync(dir + "/package.json", "utf8"),
 	) as DeepPartial<typeof import("../../../examples/todo/package.json")>;
 
+	if (options.swc) {
+		delete pkg.devDependencies!["@vitejs/plugin-react"];
+	} else {
+		delete pkg.devDependencies!["@vitejs/plugin-react-swc"];
+	}
+
 	if (!options.typescript) {
 		delete pkg.scripts!["test:typecheck"];
 	}
@@ -144,8 +149,18 @@ async function copyFiles(dir: string, options: Options, command: string) {
 		"utf8",
 	);
 
+	if (options.swc) {
+		const ext = options.typescript ? "ts" : "js";
+		let viteConfig = fs.readFileSync(dir + "/vite.config." + ext, "utf8");
+		viteConfig = viteConfig.replace(
+			/@vitejs\/plugin-react/,
+			"@vitejs/plugin-react-swc",
+		);
+		fs.writeFileSync(dir + "/vite.config." + ext, viteConfig, "utf8");
+	}
+
 	if (!options.demo) {
-		await mkdirp(dir + "/src/routes");
+		await fs.promises.mkdir(dir + "/src/routes", { recursive: true });
 		const fn =
 			dir + "/src/routes/index.page." + (options.typescript ? "tsx" : "jsx");
 		fs.writeFileSync(fn, BASIC_PAGE.replace(/\n/g, os.EOL), "utf8");

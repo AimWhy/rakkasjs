@@ -1,7 +1,7 @@
 const imports: Record<string, { default: { title: string } }> =
 	import.meta.glob("./*.page.mdx", {
 		eager: true,
-		as: "frontmatter",
+		query: "?frontmatter",
 	});
 
 const sections: Array<[section: string, slugs: string[]]> = [
@@ -60,6 +60,7 @@ const sections: Array<[section: string, slugs: string[]]> = [
 			"route-guards",
 			"api-routes",
 			"api-middleware",
+			"route-config",
 		],
 	],
 	[
@@ -103,6 +104,8 @@ const sections: Array<[section: string, slugs: string[]]> = [
 			"netlify",
 			"vercel",
 			"deno",
+			"bun",
+			"lagon",
 		],
 	],
 	[

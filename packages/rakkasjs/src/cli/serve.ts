@@ -1,9 +1,14 @@
-import { createServer, InlineConfig, resolveConfig, ServerOptions } from "vite";
-import { cleanOptions, GlobalCLIOptions, startTime } from ".";
+import { performance } from "node:perf_hooks";
+import {
+	createServer,
+	type InlineConfig,
+	resolveConfig,
+	type ServerOptions,
+} from "vite";
+import { cleanOptions, type GlobalCLIOptions, startTime } from ".";
 import pico from "picocolors";
 import { version } from "../../package.json";
 import rakkas from "../vite-plugin";
-import { performance } from "perf_hooks";
 
 export async function serve(
 	root: string,
@@ -17,7 +22,6 @@ export async function serve(
 		configFile: options.config,
 		logLevel: options.logLevel,
 		clearScreen: options.clearScreen,
-		optimizeDeps: { force: options.force },
 		server: serverOptions,
 	};
 
@@ -50,7 +54,7 @@ export async function serve(
 					`(ready in ${pico.white(
 						pico.bold(Math.ceil(performance.now() - startTime)),
 					)} ms)`,
-			  )
+				)
 			: "";
 
 		info(

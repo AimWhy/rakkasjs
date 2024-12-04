@@ -14,13 +14,20 @@ export interface TocLayoutProps {
 	url: URL;
 	toc: TocItem[];
 	title: string;
+	scrollId?: string;
 	children: React.ReactNode;
 }
 
-export function TocLayout({ url, toc, title, children }: TocLayoutProps) {
+export function TocLayout({
+	url,
+	toc,
+	title,
+	children,
+	scrollId,
+}: TocLayoutProps) {
 	const slug = url.pathname.split("/")[2];
 	const currentIndex = toc.findIndex((item) => item.slug === slug);
-	type TocItem = typeof toc[number] | undefined;
+	type TocItem = (typeof toc)[number] | undefined;
 	const current = toc[currentIndex] as TocItem;
 	const prev = current && (toc[currentIndex - 1] as TocItem);
 	const next = current && (toc[currentIndex + 1] as TocItem);
@@ -73,7 +80,7 @@ export function TocLayout({ url, toc, title, children }: TocLayoutProps) {
 			</div>
 
 			<div>
-				<aside id="toc" className={css.toc}>
+				<aside id="toc" className={css.toc} data-rakkas-scroll-id={scrollId}>
 					<Toc toc={toc} />
 				</aside>
 			</div>

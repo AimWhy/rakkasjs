@@ -1,15 +1,15 @@
+import fs from "node:fs";
+import path from "node:path";
 import sirv from "sirv";
 import { createMiddleware } from "@hattip/adapter-node";
-import fs from "fs";
-import path from "path";
 import pico from "picocolors";
 import {
-	InlineConfig,
+	type InlineConfig,
 	preview as previewServer,
 	resolveConfig,
-	ServerOptions,
+	type ServerOptions,
 } from "vite";
-import { cleanOptions, GlobalCLIOptions, startTime } from ".";
+import { cleanOptions, type GlobalCLIOptions, startTime } from ".";
 import { version } from "../../package.json";
 
 export async function preview(
@@ -25,7 +25,6 @@ export async function preview(
 		configFile: options.config,
 		logLevel: options.logLevel,
 		clearScreen: options.clearScreen,
-		optimizeDeps: { force: options.force },
 	};
 
 	const initialConfig = await resolveConfig(inlineConfig, "serve").catch(
@@ -91,7 +90,7 @@ export async function preview(
 					`(ready in ${pico.white(
 						pico.bold(Math.ceil(performance.now() - startTime)),
 					)} ms)`,
-			  )
+				)
 			: "";
 
 		info(

@@ -1,9 +1,7 @@
-import React, { FC, PropsWithChildren } from "react";
-import {
-	ErrorBoundaryProps,
-	ErrorBoundary as OriginalErrorBoundary,
-} from "react-error-boundary";
+import React, { type FC, type PropsWithChildren } from "react";
+import { ErrorBoundary as OriginalErrorBoundary } from "react-error-boundary";
 import { resetErrors } from "../use-query/client-hooks";
+import type { ErrorBoundaryProps } from "./lib";
 
 /** @see https://github.com/bvaughn/react-error-boundary */
 export const ErrorBoundary: FC<PropsWithChildren<ErrorBoundaryProps>> = (
@@ -11,9 +9,9 @@ export const ErrorBoundary: FC<PropsWithChildren<ErrorBoundaryProps>> = (
 ) => (
 	<OriginalErrorBoundary
 		{...props}
-		onReset={() => {
+		onReset={(details) => {
 			resetErrors();
-			props.onReset?.();
+			props.onReset?.(details);
 		}}
 	/>
 );

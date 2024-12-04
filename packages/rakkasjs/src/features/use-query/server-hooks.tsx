@@ -1,11 +1,11 @@
 import React from "react";
 import {
-	CacheItem,
+	type CacheItem,
 	createQueryClient,
 	QueryCacheContext,
 } from "./implementation";
 import { uneval } from "devalue";
-import { ServerHooks } from "../../runtime/hattip-handler";
+import type { ServerHooks } from "../../runtime/hattip-handler";
 
 const useQueryServerHooks: ServerHooks = {
 	createPageHooks() {
@@ -24,6 +24,8 @@ const useQueryServerHooks: ServerHooks = {
 				this._hasNewItems = false;
 				return items;
 			},
+
+			setTags() {},
 
 			has(key: string) {
 				return key in this._items;
@@ -47,7 +49,7 @@ const useQueryServerHooks: ServerHooks = {
 				return result as any;
 			},
 
-			set(key: string, valueOrPromise: Promise<any>) {
+			set(key: string, valueOrPromise: any) {
 				this._items[key] = valueOrPromise;
 				if (valueOrPromise instanceof Promise) {
 					valueOrPromise.then(
@@ -89,18 +91,18 @@ const useQueryServerHooks: ServerHooks = {
 			},
 
 			extendPageContext(ctx) {
-				ctx.queryClient = createQueryClient(cache);
+				ctx.queryClient = createQueryClient(cache, ctx);
 			},
 
-			emitToDocumentHead() {
+			emitToSyncHeadScript() {
 				const newItemsString = uneval(cache._getNewItems());
-				return `<script>$RSC=${newItemsString}</script>`;
+				return `rakkas.cache=${newItemsString};`;
 			},
 
 			emitBeforeSsrChunk() {
 				if (cache._hasNewItems) {
 					const newItemsString = uneval(cache._getNewItems());
-					return `<script>Object.assign($RSC,${newItemsString})</script>`;
+					return `<script>Object.assign(rakkas.cache,${newItemsString})</script>`;
 				}
 			},
 		};

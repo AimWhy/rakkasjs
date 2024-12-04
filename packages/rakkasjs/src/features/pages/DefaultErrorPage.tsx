@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { FallbackProps } from "react-error-boundary";
+import type { FallbackProps } from "react-error-boundary";
 
 export function DefaultErrorPage(props: FallbackProps) {
 	useEffect(() => {
@@ -11,10 +11,10 @@ export function DefaultErrorPage(props: FallbackProps) {
 		typeof props.error?.stack === "string"
 			? props.error.stack
 			: typeof props.error?.message === "string"
-			? props.error.message
-			: typeof props.error === "string"
-			? props.error
-			: undefined;
+				? props.error.message
+				: typeof props.error === "string"
+					? props.error
+					: undefined;
 
 	return import.meta.env.DEV ? (
 		<>

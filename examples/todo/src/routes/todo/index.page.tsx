@@ -2,25 +2,33 @@ import { useState } from "react";
 import { Todo } from "./Todo";
 import css from "./page.module.css";
 import {
-	runServerSideMutation,
-	useMutation,
-	useServerSideQuery,
+	Page,
+	queryOptions,
+	runServerSideQuery,
+	useQuery,
+	useQueryClient,
+	useServerSideMutation,
 } from "rakkasjs";
 
 import { createTodo, readAllTodos } from "src/crud";
 
-export default function TodoPage() {
-	const { data, refetch } = useServerSideQuery(readAllTodos, {
-		refetchOnWindowFocus: true,
-		refetchOnReconnect: true,
-	});
+const TodoPage: Page = () => {
+	const { data } = useQuery(todos);
 
 	const [text, setText] = useState("");
 
-	const { mutate: create } = useMutation(async () => {
-		await runServerSideMutation(() => createTodo({ text, done: false }));
-		refetch();
-	});
+	const client = useQueryClient();
+
+	const { mutate: create } = useServerSideMutation(
+		async () => {
+			createTodo({ text, done: false });
+		},
+		{
+			onSuccess() {
+				client.invalidateQueries("todos");
+			},
+		},
+	);
 
 	return (
 		<main>
@@ -30,7 +38,7 @@ export default function TodoPage() {
 
 			<ul className={css.todoList}>
 				{data.map((todo) => (
-					<Todo key={todo.id} todo={todo} refetch={refetch} />
+					<Todo key={todo.id} todo={todo} />
 				))}
 			</ul>
 
@@ -52,4 +60,19 @@ export default function TodoPage() {
 			</p>
 		</main>
 	);
-}
+};
+
+export default TodoPage;
+
+TodoPage.preload = (ctx) => {
+	ctx.queryClient.prefetchQuery(todos);
+};
+
+const todos = queryOptions({
+	queryKey: "todos",
+	queryFn(ctx) {
+		return runServerSideQuery(ctx.requestContext, readAllTodos);
+	},
+	refetchOnWindowFocus: true,
+	refetchOnReconnect: true,
+});

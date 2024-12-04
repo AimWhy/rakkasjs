@@ -5,12 +5,13 @@
 		"esModuleInterop": true,
 		"jsx": "react-jsx",
 		"target": "es6",
-		"moduleResolution": "node",
+		"moduleResolution": "Bundler",
 		"types": ["vite/client"],
 		"skipLibCheck": true,
 		"baseUrl": "./src",
 		"paths": {
 			"examples": ["examples/*"]
-		}
+		},
+		"outDir": "dist"
 	}
 }

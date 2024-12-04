@@ -1,9 +1,12 @@
-import path from "path";
-import fs from "fs";
-import cloudflareWorkers from "@hattip/bundler-cloudflare-workers";
+import path from "node:path";
+import fs from "node:fs";
+import hattipCloudflareWorkers from "@hattip/bundler-cloudflare-workers";
 import { bundle as netlify } from "@hattip/bundler-netlify";
 import { bundle as vercel } from "@hattip/bundler-vercel";
 import deno from "@hattip/bundler-deno";
+import { builtinModules } from "node:module";
+
+const nodePrefixedModules = builtinModules.map((m) => "node:" + m);
 
 export interface RakkasAdapter {
 	name: string;
@@ -11,12 +14,20 @@ export interface RakkasAdapter {
 	disableStreaming?: boolean;
 }
 
-export const adapters: Record<string, RakkasAdapter> = {
+function defineAdapters<T extends Record<string, RakkasAdapter>>(
+	adapters: T,
+): T {
+	return adapters;
+}
+
+export const adapters = defineAdapters({
 	node: {
 		name: "node",
 	},
 
-	"cloudflare-workers": {
+	"cloudflare-workers": cloudflareWorkers(),
+
+	"cloudflare-workers-node-compat": {
 		name: "cloudflare-workers",
 		async bundle(root: string) {
 			let entry = findEntry(root, "src/entry-cloudflare-workers");
@@ -26,7 +37,7 @@ export const adapters: Record<string, RakkasAdapter> = {
 				await fs.promises.writeFile(entry, CLOUDFLARE_WORKERS_ENTRY);
 			}
 
-			cloudflareWorkers(
+			await hattipCloudflareWorkers(
 				{
 					output: path.resolve(
 						root,
@@ -38,6 +49,10 @@ export const adapters: Record<string, RakkasAdapter> = {
 					options.define = options.define || {};
 					options.define["process.env.RAKKAS_PRERENDER"] = "undefined";
 					options.define["global"] = "globalThis";
+					options.external = [
+						...(options.external ?? []),
+						...nodePrefixedModules,
+					];
 				},
 			);
 		},
@@ -56,7 +71,7 @@ export const adapters: Record<string, RakkasAdapter> = {
 				await fs.promises.writeFile(entry, VERCEL_ENTRY);
 			}
 
-			vercel({
+			await vercel({
 				serverlessEntry: entry,
 				staticDir: path.resolve(root, "dist/client"),
 				manipulateEsbuildOptions(options) {
@@ -79,13 +94,17 @@ export const adapters: Record<string, RakkasAdapter> = {
 				await fs.promises.writeFile(entry, VERCEL_EDGE_ENTRY);
 			}
 
-			vercel({
+			await vercel({
 				edgeEntry: entry,
 				staticDir: path.resolve(root, "dist/client"),
 				manipulateEsbuildOptions(options) {
 					options.define = options.define || {};
 					options.define["process.env.RAKKAS_PRERENDER"] = "undefined";
 					options.define["global"] = "globalThis";
+					options.external = [
+						...(options.external ?? []),
+						...nodePrefixedModules,
+					];
 				},
 			});
 		},
@@ -104,7 +123,7 @@ export const adapters: Record<string, RakkasAdapter> = {
 				await fs.promises.writeFile(entry, NETLIFY_ENTRY);
 			}
 
-			netlify({
+			await netlify({
 				functionEntry: entry,
 				staticDir: path.resolve(root, "dist/client"),
 				manipulateEsbuildOptions(options) {
@@ -129,13 +148,17 @@ export const adapters: Record<string, RakkasAdapter> = {
 
 			await generateStaticAssetManifest(root);
 
-			netlify({
+			await netlify({
 				edgeEntry: entry,
 				staticDir: path.resolve(root, "dist/client"),
 				manipulateEsbuildOptions(options) {
 					options.define = options.define || {};
 					options.define["process.env.RAKKAS_PRERENDER"] = "undefined";
 					options.define["global"] = "globalThis";
+					options.external = [
+						...(options.external ?? []),
+						...nodePrefixedModules,
+					];
 				},
 			});
 		},
@@ -154,7 +177,7 @@ export const adapters: Record<string, RakkasAdapter> = {
 
 			await generateStaticAssetManifest(root);
 
-			deno(
+			await deno(
 				{
 					input,
 					output: path.resolve(root, "dist/deno/mod.js"),
@@ -169,7 +192,112 @@ export const adapters: Record<string, RakkasAdapter> = {
 			);
 		},
 	},
-};
+
+	bun: {
+		name: "bun",
+
+		disableStreaming: true,
+
+		async bundle(root) {
+			let input = findEntry(root, "src/entry-bun");
+
+			if (!input) {
+				input = path.resolve(root, "dist/server/entry-bun.js");
+				await fs.promises.writeFile(input, BUN_ENTRY);
+			}
+		},
+	},
+
+	lagon: {
+		name: "lagon",
+
+		disableStreaming: true,
+
+		async bundle(root) {
+			let entry = findEntry(root, "src/entry-lagon");
+
+			if (!entry) {
+				entry = path.resolve(root, "dist/server/entry-lagon.js");
+				await fs.promises.writeFile(entry, LAGON_ENTRY);
+			}
+
+			await hattipCloudflareWorkers(
+				{
+					output: path.resolve(root, "dist/server/lagon-bundle.js"),
+					cfwEntry: entry,
+				},
+				(options) => {
+					options.define = options.define || {};
+					options.define["process.env.RAKKAS_PRERENDER"] = "undefined";
+					options.define["global"] = "globalThis";
+					options.plugins = options.plugins || [];
+					options.plugins.push({
+						name: "async-hooks-stub",
+						setup(build) {
+							build.onResolve({ filter: /^node:async_hooks$/ }, () => ({
+								namespace: "node",
+								path: "async_hooks",
+							}));
+
+							build.onLoad(
+								{ namespace: "node", filter: /^async_hooks$/ },
+								() => ({
+									contents: ASYNC_HOOKS_STUB,
+								}),
+							);
+						},
+					});
+				},
+			);
+		},
+	},
+});
+
+export function cloudflareWorkers(): RakkasAdapter {
+	return {
+		name: "cloudflare-workers",
+		async bundle(root: string) {
+			let entry = findEntry(root, "src/entry-cloudflare-workers");
+
+			if (!entry) {
+				entry = path.resolve(root, "dist/server/entry-cloudflare-workers.js");
+				await fs.promises.writeFile(entry, CLOUDFLARE_WORKERS_ENTRY);
+			}
+
+			await hattipCloudflareWorkers(
+				{
+					output: path.resolve(
+						root,
+						"dist/server/cloudflare-workers-bundle.js",
+					),
+					cfwEntry: entry,
+				},
+				(options) => {
+					options.define = options.define || {};
+					options.define["process.env.RAKKAS_PRERENDER"] = "undefined";
+					options.define["global"] = "globalThis";
+					options.plugins = options.plugins || [];
+					options.plugins.push({
+						name: "async-hooks-stub",
+						setup(build) {
+							build.onResolve({ filter: /^node:async_hooks$/ }, () => ({
+								namespace: "node",
+								path: "async_hooks",
+							}));
+
+							build.onLoad(
+								{ namespace: "node", filter: /^async_hooks$/ },
+								() => ({
+									contents: ASYNC_HOOKS_STUB,
+								}),
+							);
+						},
+					});
+				},
+			);
+		},
+	};
+}
 
 function findEntry(root: string, name: string) {
 	const entries = [
@@ -284,14 +412,19 @@ const VERCEL_EDGE_ENTRY = `
 `;
 
 const DENO_ENTRY = `
-	import * as path from "https://deno.land/std@0.144.0/path/mod.ts";
-	import { serve, serveDir, createRequestHandler } from "@hattip/adapter-deno";
+	import { createServeHandler } from "@hattip/adapter-deno";
+	import * as path from "https://deno.land/std@0.201.0/path/mod.ts";
+	import { serveDir } from "https://deno.land/std@0.201.0/http/file_server.ts";
+	import { serve } from "https://deno.land/std@0.201.0/http/server.ts";
 	import handler from "./hattip.js";
 	import staticFiles from "./static-manifest.js";
+	import process from "node:process";
+
+	globalThis.process = process;
 
 	const staticDir = path.join(path.dirname(path.fromFileUrl(import.meta.url)), "public");
 
-	const denoHandler = createRequestHandler(handler);
+	const denoHandler = createServeHandler(handler);
 
 	serve(
 		async (request, connInfo) => {
@@ -310,4 +443,38 @@ const DENO_ENTRY = `
 			port: Number(process.env.PORT) || 3000,
 		},
 	);
+`;
+
+const BUN_ENTRY = `
+	import url from "node:url";
+	import path from "node:path";
+	import bunAdapter from "@hattip/adapter-bun";
+	import handler from "./hattip.js";
+
+	const dir = path.resolve(
+		path.dirname(url.fileURLToPath(new URL(import.meta.url))),
+		"../client",
+	);
+
+	export default bunAdapter(handler, { staticDir: dir });
+`;
+
+const LAGON_ENTRY = `
+	import lagonAdapter from "@hattip/adapter-lagon";
+	import hattipHandler from "./hattip.js";
+
+	const originalFormData = Request.prototype.formData;
+	Request.prototype.formData = async function () {
+		if (this.headers.get("content-type")?.startsWith("multipart/form-data")) {
+			return originalFormData.call(this);
+		} else {
+			return new URLSearchParams(await this.text());
+		}
+	};
+
+	export const handler = lagonAdapter(hattipHandler);
+`;
+
+const ASYNC_HOOKS_STUB = `
+export const AsyncLocalStorage = undefined;
 `;

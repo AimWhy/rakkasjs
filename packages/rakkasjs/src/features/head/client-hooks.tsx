@@ -1,9 +1,13 @@
 import React from "react";
-import { HelmetProvider } from "react-helmet-async";
 import { defineClientHooks } from "../../runtime/client-hooks";
+import { HeadContext } from "./implementation/context";
 
 export default defineClientHooks({
 	wrapApp(app) {
-		return <HelmetProvider>{app}</HelmetProvider>;
+		return (
+			<HeadContext.Provider value={{ stack: rakkas.headTagStack }}>
+				{app}
+			</HeadContext.Provider>
+		);
 	},
 });

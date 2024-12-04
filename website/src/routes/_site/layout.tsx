@@ -10,10 +10,7 @@ import { ExternalIcon } from "lib/ExternalIcon";
 
 const MainLayout: Layout = ({ children }) => (
 	<>
-		<Head>
-			<html lang="en" />
-			<title>Rakkas</title>
-		</Head>
+		<Head title="Rakkas" />
 
 		<Header />
 
@@ -21,7 +18,6 @@ const MainLayout: Layout = ({ children }) => (
 			<MDXProvider
 				components={{
 					// TODO: Typing problem
-					// @ts-expect-error: To fix
 					a: MdxLink,
 					// eslint-disable-next-line react/display-name
 					table: (props) => (
@@ -37,7 +33,8 @@ const MainLayout: Layout = ({ children }) => (
 
 		<footer className={css.footer}>
 			<p>
-				Software and documentation: Copyright 2021 Fatih Aygün. MIT License.
+				Software and documentation: Copyright 2021-{new Date().getFullYear()}{" "}
+				Fatih Aygün. MIT License.
 			</p>
 
 			<p>

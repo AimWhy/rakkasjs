@@ -1,0 +1,28 @@
+{
+  "name": "@rakkasjs/example-auth",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "dotenv rakkas",
+    "build": "rakkas build",
+    "start": "dotenv node dist/server/index.js",
+    "gen-secret": "node src/gen-secret.js",
+    "test": "pnpm test:typecheck",
+    "test:typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "dotenv-cli": "^7.4.2",
+    "rakkasjs": "0.7.0-next.49",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.3",
+    "vite-tsconfig-paths": "^5.0.1"
+  },
+  "dependencies": {
+    "@auth/core": "0.34.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

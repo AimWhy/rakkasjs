@@ -1,12 +1,12 @@
 import {
 	composePartial,
-	RequestHandler,
-	RequestContext,
+	type RequestHandler,
+	type RequestContext,
 } from "@hattip/compose";
 import { unescapeParams } from "../../internal/find-page";
 
 export default async function renderApiRoute(ctx: RequestContext) {
-	const apiRoutes = await import("virtual:rakkasjs:api-routes");
+	const apiRoutes = await import("rakkasjs:api-routes");
 
 	for (const [regex, importers, rest] of apiRoutes.default) {
 		const match = regex.exec(ctx.url.pathname);
@@ -32,7 +32,7 @@ export default async function renderApiRoute(ctx: RequestContext) {
 			),
 		);
 
-		const handler = composePartial([...middlewares, endpointHandler], ctx.next);
+		const handler = composePartial([...middlewares, endpointHandler]);
 
 		return handler(ctx);
 	}

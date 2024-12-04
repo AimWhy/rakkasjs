@@ -1,26 +1,42 @@
-/// <reference types="@vavite/multibuild/vite-config" />
-
-import { PluginOption, ResolvedConfig } from "vite";
-import react, { Options as ReactPluginOptions } from "@vitejs/plugin-react";
+import type { FilterPattern, Plugin } from "vite";
 import { injectConfig } from "./inject-config";
 import { preventViteBuild } from "./prevent-vite-build";
-import vaviteConnect from "@vavite/connect";
+import { vaviteConnect } from "@vavite/connect";
 import exposeViteDevServer from "@vavite/expose-vite-dev-server";
 import { resolveClientManifest } from "./resolve-client-manifest";
 import { virtualDefaultEntry } from "./virtual-default-entry";
+import { nodeLoaderPlugin } from "@vavite/node-loader/plugin";
 
 // Feature plugins
-import apiRoutes from "../features/api-routes/vite-plugin";
-import pageRoutes from "../features/pages/vite-plugin";
+import pages from "../features/pages/vite-plugin";
 import runServerSide from "../features/run-server-side/vite-plugin";
-import { adapters, RakkasAdapter } from "./adapters";
-import { babelTransformClientSidePages } from "../features/run-server-side/implementation/transform-client-page";
+import { adapters, type RakkasAdapter } from "./adapters";
+import { serverOnlyClientOnly } from "./server-only-client-only";
+import {
+	type RakkasPluginApi,
+	rakkasPlugins,
+	type RouteDefinition,
+} from "./rakkas-plugins";
+import { fsRoutes } from "./fs-routes";
+import { routes } from "./routes";
+
+export type { RakkasPluginApi };
+export type {
+	ApiRouteDefinition,
+	CommonRouteDefinition,
+	PageRouteDefinition,
+	RouteDefinition,
+} from "./rakkas-plugins";
+
+declare module "vite" {
+	interface Plugin {
+		api?: {
+			rakkas?: RakkasPluginApi;
+		};
+	}
+}
 
 export interface RakkasOptions {
-	/** Options passed to @vite/plugin-react */
-	react?: ReactPluginOptions;
-	/** File extensions for pages and layouts @default ["jsx","tsx"] */
-	pageExtensions?: string[];
 	/**
 	 * Paths to start crawling when prerendering static pages.
 	 * `true` is the same as `["/"]` and `false` is the same as `[]`.
@@ -29,19 +45,44 @@ export interface RakkasOptions {
 	prerender?: string[] | boolean;
 	/** Whether to enable strict mode in dev. @default true */
 	strictMode?: boolean;
-	adapter?:
-		| "node"
-		| "cloudflare-workers"
-		| "vercel"
-		| "vercel-edge"
-		| "netlify"
-		| "netlify-edge"
-		| "deno"
-		| RakkasAdapter;
+	/** Platform adapter */
+	adapter?: keyof typeof adapters | RakkasAdapter;
+	/**
+	 * Filter patterns for server-only files that should not be included in the client bundle.
+	 * Patterns are interpreted as relative to the project root.
+	 * Files outside the project root, files inside node_modules, and CSS files are always excluded.
+	 *
+	 * @default { include: ["**\/*.server.*", "**\/server/**"] }
+	 */
+	serverOnlyFiles?: {
+		include?: FilterPattern;
+		exclude?: FilterPattern;
+	};
+	/**
+	 * Filter patterns for client-only files that should not be included in the server bundle.
+	 * Patterns are interpreted as relative to the project root.
+	 * Files outside the project root, files inside node_modules, and CSS files are always excluded.
+	 *
+	 * @default { include: ["**\/*.client.*", "**\/client/**"] }
+	 */
+	clientOnlyFiles?: {
+		include?: FilterPattern;
+		exclude?: FilterPattern;
+	};
+	/**
+	 * Enable/disable file system routes
+	 */
+	fsRoutes?: boolean;
+	/**
+	 * Config-based routes
+	 */
+	routes?: RouteDefinition[];
 }
 
-export default function rakkas(options: RakkasOptions = {}): PluginOption[] {
+export default function rakkas(options: RakkasOptions = {}): Plugin[] {
+	const { fsRoutes: enableFsRoutes = true, routes: customRoutes } = options;
 	let { prerender = [], adapter = "node" } = options;
+
 	if (prerender === true) {
 		prerender = ["/"];
 	} else if (prerender === false) {
@@ -52,11 +93,12 @@ export default function rakkas(options: RakkasOptions = {}): PluginOption[] {
 		adapter = adapters[adapter];
 	}
 
-	let resolvedConfig: ResolvedConfig;
+	const [routesPre, routesPost] = routes();
 
-	return [
+	const result: Array<Plugin | false | undefined> = [
+		globalThis.__vavite_loader__ && nodeLoaderPlugin(),
 		...vaviteConnect({
-			handlerEntry: "/virtual:rakkasjs:node-entry",
+			handlerEntry: "/rakkasjs:node-entry",
 			clientAssetsDir: "dist/client",
 			serveClientAssetsInDev: true,
 		}),
@@ -68,10 +110,19 @@ export default function rakkas(options: RakkasOptions = {}): PluginOption[] {
 			adapter,
 			strictMode: options.strictMode ?? true,
 		}),
-		apiRoutes(),
-		pageRoutes({
-			pageExtensions: options.pageExtensions,
-		}),
+		enableFsRoutes && fsRoutes(),
+		customRoutes && {
+			name: "rakkasjs:custom-routes",
+			api: {
+				rakkas: {
+					getRoutes() {
+						return customRoutes!;
+					},
+				},
+			},
+		},
+		routesPre,
+		pages(),
 		virtualDefaultEntry({
 			entry: "/src/entry-node",
 			virtualName: "node-entry",
@@ -101,54 +152,28 @@ export default function rakkas(options: RakkasOptions = {}): PluginOption[] {
 		}),
 		resolveClientManifest(),
 		...runServerSide(),
-		{
-			name: "rakkasjs:resolve-config",
-			configResolved(config) {
-				resolvedConfig = config;
-			},
-		},
-		...react({
-			...options.react,
-			babel(id, opts) {
-				const inputOptions =
-					typeof options.react?.babel === "function"
-						? options.react.babel(id, opts)
-						: options.react?.babel;
-
-				if (
-					!opts?.ssr &&
-					((resolvedConfig as any).api.rakkas.isPage(id) ||
-						(resolvedConfig as any).api.rakkas.isLayout(id))
-				) {
-					return {
-						...inputOptions,
-						plugins: [
-							babelTransformClientSidePages(),
-							...(inputOptions?.plugins ?? []),
-						],
-					};
-				} else {
-					return inputOptions || {};
-				}
-			},
-		}),
+		routesPost,
+		serverOnlyClientOnly(options),
+		rakkasPlugins(),
 	];
+
+	return result.filter(Boolean) as Plugin[];
 }
 
 const DEFAULT_NODE_ENTRY_CONTENTS = `
 	import { createMiddleware } from "rakkasjs/node-adapter";
 	export default createMiddleware(
-		(req, res, next) => import("virtual:rakkasjs:hattip-entry").then((m) => m.default(req, res, next)),
+		(req, res, next) => import("rakkasjs:hattip-entry").then((m) => m.default(req, res, next)),
 	);
 `;
 
 const DEFAULT_HATTIP_ENTRY_CONTENTS = `
-	import { createRequestHandler } from "rakkasjs";
+	import { createRequestHandler } from "rakkasjs/server";
 	export default createRequestHandler();
 `;
 
 const DEFAULT_CLIENT_ENTRY_CONTENTS = `
-	import { startClient } from "rakkasjs";
+	import { startClient } from "rakkasjs/client";
 	startClient();
 `;
 
